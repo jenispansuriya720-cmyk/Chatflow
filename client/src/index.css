@@ -1,0 +1,278 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.5);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.3);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.6);
+}
+
+/* Glassmorphism helpers */
+.glass {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.dark .glass {
+  background: rgba(17, 19, 26, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Subtle glow effects */
+.glow-brand {
+  box-shadow: 0 0 20px -5px rgba(99, 102, 241, 0.35);
+}
+
+/* Hide scrollbar for tabs */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* =========================================================
+   GLOBAL AVATAR & CALL AVATAR RULES
+   ========================================================= */
+
+.avatar {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 9999px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center center;
+}
+
+.avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  user-select: none;
+  border-radius: 9999px;
+}
+
+.avatar-status {
+  position: absolute;
+  right: 2%;
+  bottom: 2%;
+  width: 22%;
+  height: 22%;
+  min-width: 8px;
+  min-height: 8px;
+  max-width: 22px;
+  max-height: 22px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  border: 2.5px solid #ffffff;
+  pointer-events: none;
+}
+
+.dark .avatar-status {
+  border-color: #0f172a;
+}
+
+/* Call Avatar Design */
+.call-avatar-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-avatar-halo {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.45) 0%, rgba(147, 51, 234, 0.2) 60%, transparent 80%);
+  filter: blur(16px);
+  inset: -16px;
+  pointer-events: none;
+}
+
+.call-avatar-ring {
+  position: relative;
+  padding: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.9) 0%, rgba(168, 85, 247, 0.9) 100%);
+  box-shadow: 0 10px 30px -5px rgba(99, 102, 241, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.call-avatar {
+  width: clamp(140px, 20vw, 220px);
+  height: clamp(140px, 20vw, 220px);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.profile-avatar {
+  width: clamp(96px, 14vw, 180px);
+  height: clamp(96px, 14vw, 180px);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   PERSONAL CHAT THEME SYSTEM
+   Scoped CSS variables and adaptive bubble styles
+   ============================================================ */
+
+.chat-theme-scope {
+  --chat-bg: #ffffff;
+  --chat-bg-secondary: #f8fafc;
+  --chat-incoming: #ffffff;
+  --chat-incoming-text: #0f172a;
+  --chat-outgoing: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  --chat-outgoing-text: #ffffff;
+  --chat-header: #ffffff;
+  --chat-input: #f1f5f9;
+  --chat-input-text: #0f172a;
+  --chat-input-placeholder: #94a3b8;
+  --chat-accent: #4f46e5;
+  --chat-border: #e2e8f0;
+  --chat-timestamp: #94a3b8;
+  --chat-link: #3b82f6;
+  --chat-bubble-radius-out: 1.25rem 1.25rem 0.25rem 1.25rem;
+  --chat-bubble-radius-in: 1.25rem 1.25rem 1.25rem 0.25rem;
+  --chat-bubble-padding: 0.625rem 1rem;
+  --chat-font-size: 0.875rem;
+  --chat-row-spacing: 0.25rem;
+}
+
+/* Bubble Styles */
+.bubble-style-classic .chat-bubble-out {
+  border-radius: 1.25rem 1.25rem 0.25rem 1.25rem;
+}
+.bubble-style-classic .chat-bubble-in {
+  border-radius: 1.25rem 1.25rem 1.25rem 0.25rem;
+}
+
+.bubble-style-soft .chat-bubble-out {
+  border-radius: 1.75rem 1.75rem 0.5rem 1.75rem;
+}
+.bubble-style-soft .chat-bubble-in {
+  border-radius: 1.75rem 1.75rem 1.75rem 0.5rem;
+}
+
+.bubble-style-compact .chat-bubble-out {
+  border-radius: 0.75rem 0.75rem 0.15rem 0.75rem;
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+.bubble-style-compact .chat-bubble-in {
+  border-radius: 0.75rem 0.75rem 0.75rem 0.15rem;
+  padding-top: 0.35rem !important;
+  padding-bottom: 0.35rem !important;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+
+.bubble-style-minimal .chat-bubble-out {
+  border-radius: 0.625rem;
+  background-color: transparent !important;
+  border: 1.5px solid var(--chat-accent);
+}
+.bubble-style-minimal .chat-bubble-in {
+  border-radius: 0.625rem;
+  background-color: transparent !important;
+  border: 1.5px solid var(--chat-border);
+}
+
+/* Font Size Modifiers */
+.chat-font-small .chat-message-text {
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+}
+.chat-font-medium .chat-message-text {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+.chat-font-large .chat-message-text {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+
+/* Density Modifiers */
+.chat-density-compact .chat-message-row {
+  margin-top: 0.125rem;
+  margin-bottom: 0.125rem;
+}
+.chat-density-comfortable .chat-message-row {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+.chat-density-spacious .chat-message-row {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Readability Scrim Overlay for Custom Wallpapers */
+.chat-wallpaper-scrim {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-color: rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(0.5px);
+}
+
+.dark .chat-wallpaper-scrim {
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-theme-scope * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
