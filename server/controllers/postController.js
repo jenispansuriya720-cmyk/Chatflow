@@ -5,6 +5,8 @@ const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const AuditLog = require('../models/AuditLog');
+const { cleanupMedia } = require('../utils/mediaCleanup');
 
 // @desc    Get social feed
 // @route   GET /api/posts/feed
@@ -17,7 +19,7 @@ const getFeed = async (req, res, next) => {
     const skip = (page - 1) * limit;
 
     // Get list of followed user IDs
-    const follows = await Follow.find({ follower: userId, status: 'accepted' });
+    const follows = await Follow.find({ follower: userId, status: 'accepted' }).select('following').lean();
     const followingIds = follows.map((f) => f.following);
     followingIds.push(userId); // include own posts
 
@@ -25,7 +27,7 @@ const getFeed = async (req, res, next) => {
     const unallowedPrivateUsers = await User.find({
       isPrivate: true,
       _id: { $nin: followingIds },
-    }).select('_id');
+    }).select('_id').lean();
     const unallowedPrivateIds = unallowedPrivateUsers.map((u) => u._id);
 
     // Query: either posts from following or public posts from non-private accounts
@@ -53,25 +55,30 @@ const getFeed = async (req, res, next) => {
     }
 
     const total = await Post.countDocuments(query);
-    const posts = await Post.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('author', 'fullName username profilePicture bio isPrivate')
-      .populate('mentions', 'fullName username');
+    const [posts, user] = await Promise.all([
+      Post.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('author', 'fullName username profilePicture bio isPrivate')
+        .populate('mentions', 'fullName username')
+        .lean(),
+      User.findById(userId).select('savedPosts').lean(),
+    ]);
 
-    // Attach isLiked and isSaved flags for current user
-    const user = await User.findById(userId);
+    const savedSet = new Set((user?.savedPosts || []).map((id) => id.toString()));
     const postsWithFlags = posts.map((post) => {
-      const p = post.toObject();
-      p.isLiked = (post.likes || []).some(
+      const isLiked = (post.likes || []).some(
         (id) => id.toString() === userId.toString()
       );
-      p.isSaved = (user?.savedPosts || []).some(
-        (id) => id.toString() === post._id.toString()
-      );
-      p.likesCount = post.likes ? post.likes.length : 0;
-      return p;
+      const isSaved = savedSet.has(post._id.toString());
+      const likesCount = post.likes ? post.likes.length : 0;
+      return {
+        ...post,
+        isLiked,
+        isSaved,
+        likesCount,
+      };
     });
 
     res.status(200).json({
@@ -92,21 +99,24 @@ const getFeed = async (req, res, next) => {
 // @access  Private
 const getSavedPosts = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select('savedPosts').lean();
     const savedIds = user?.savedPosts || [];
 
     const posts = await Post.find({ _id: { $in: savedIds } })
       .sort({ createdAt: -1 })
-      .populate('author', 'fullName username profilePicture');
+      .populate('author', 'fullName username profilePicture')
+      .lean();
 
     const postsWithFlags = posts.map((post) => {
-      const p = post.toObject();
-      p.isLiked = (post.likes || []).some(
+      const isLiked = (post.likes || []).some(
         (id) => id.toString() === req.user._id.toString()
       );
-      p.isSaved = true;
-      p.likesCount = post.likes ? post.likes.length : 0;
-      return p;
+      return {
+        ...post,
+        isLiked,
+        isSaved: true,
+        likesCount: post.likes ? post.likes.length : 0,
+      };
     });
 
     res.status(200).json({
@@ -127,7 +137,7 @@ const getUserPosts = async (req, res, next) => {
     const { userId } = req.params;
     const currentUserId = req.user._id;
 
-    const targetUser = await User.findById(userId);
+    const targetUser = await User.findById(userId).select('isPrivate').lean();
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'User not found.' });
     }
@@ -138,7 +148,7 @@ const getUserPosts = async (req, res, next) => {
         follower: currentUserId,
         following: userId,
         status: 'accepted',
-      });
+      }).lean();
 
       if (!isAcceptedFollower) {
         return res.status(200).json({
@@ -150,21 +160,26 @@ const getUserPosts = async (req, res, next) => {
       }
     }
 
-    const posts = await Post.find({ author: userId })
-      .sort({ createdAt: -1 })
-      .populate('author', 'fullName username profilePicture isPrivate');
+    const [posts, user] = await Promise.all([
+      Post.find({ author: userId })
+        .sort({ createdAt: -1 })
+        .populate('author', 'fullName username profilePicture isPrivate')
+        .lean(),
+      User.findById(currentUserId).select('savedPosts').lean(),
+    ]);
 
-    const user = await User.findById(currentUserId);
+    const savedSet = new Set((user?.savedPosts || []).map((id) => id.toString()));
     const postsWithFlags = posts.map((post) => {
-      const p = post.toObject();
-      p.isLiked = (post.likes || []).some(
+      const isLiked = (post.likes || []).some(
         (id) => id.toString() === currentUserId.toString()
       );
-      p.isSaved = (user?.savedPosts || []).some(
-        (id) => id.toString() === post._id.toString()
-      );
-      p.likesCount = post.likes ? post.likes.length : 0;
-      return p;
+      const isSaved = savedSet.has(post._id.toString());
+      return {
+        ...post,
+        isLiked,
+        isSaved,
+        likesCount: post.likes ? post.likes.length : 0,
+      };
     });
 
     res.status(200).json({
@@ -430,13 +445,49 @@ const deletePost = async (req, res, next) => {
     if (post.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
-        message: 'You can only delete your own posts.',
+        message: 'You are not allowed to delete this content.',
       });
     }
 
+    // 1. Delete associated comments
     await Comment.deleteMany({ post: post._id });
-    await Post.findByIdAndDelete(post._id);
+
+    // 2. Remove from all users' savedPosts
+    await User.updateMany(
+      { savedPosts: post._id },
+      { $pull: { savedPosts: post._id } }
+    );
+
+    // 3. Remove related notifications
+    await Notification.deleteMany({ post: post._id });
+
+    // 4. Safe media cleanup
+    if (post.media && post.media.length > 0) {
+      await cleanupMedia(
+        post.media.map((m) => m.url),
+        req.user._id
+      );
+    }
+
+    // 5. Decrement author post count
     await User.findByIdAndUpdate(req.user._id, { $inc: { postsCount: -1 } });
+
+    // 6. Delete post from database
+    await Post.findByIdAndDelete(post._id);
+
+    // 7. Audit log
+    await AuditLog.create({
+      userId: req.user._id,
+      contentType: 'post',
+      contentId: post._id,
+      action: 'delete',
+      details: { contentPreview: post.content?.slice(0, 80) },
+    });
+
+    // 8. Real-time broadcast
+    if (req.io) {
+      req.io.emit('post:deleted', { postId: post._id });
+    }
 
     res.status(200).json({
       success: true,
@@ -452,8 +503,8 @@ const deletePost = async (req, res, next) => {
 // @access  Private
 const sharePostToChat = async (req, res, next) => {
   try {
-    const { targetConversationId } = req.body;
-    const post = await Post.findById(req.params.id).populate('author', 'fullName username');
+    const targetConversationId = req.body.targetConversationId || req.body.conversationId;
+    const post = await Post.findById(req.params.id).populate('author', 'fullName username profilePicture');
 
     if (!post) {
       return res.status(404).json({ success: false, message: 'Post not found.' });
@@ -473,6 +524,16 @@ const sharePostToChat = async (req, res, next) => {
 
     const shareText = `Shared post from @${post.author.username}: "${post.content ? post.content.slice(0, 100) : 'Photo/Video'}"`;
 
+    const sharedContent = {
+      contentType: 'post',
+      contentId: post._id,
+      authorName: post.author.fullName,
+      authorUsername: post.author.username,
+      titleOrCaption: post.content ? post.content.slice(0, 150) : '',
+      thumbnailUrl: post.media?.[0]?.url || '',
+      mediaUrl: post.media?.[0]?.url || '',
+    };
+
     const sharedAttachments = post.media?.length > 0
       ? [
           {
@@ -487,6 +548,8 @@ const sharePostToChat = async (req, res, next) => {
       conversation: targetConversationId,
       sender: req.user._id,
       text: shareText,
+      type: 'shared_post',
+      sharedContent,
       attachments: sharedAttachments,
       status: 'sent',
       readBy: [{ user: req.user._id, readAt: new Date() }],
@@ -498,9 +561,19 @@ const sharePostToChat = async (req, res, next) => {
     post.sharesCount = (post.sharesCount || 0) + 1;
     await post.save();
 
+    const populated = await Message.findById(message._id)
+      .populate('sender', 'fullName username profilePicture');
+
+    if (req.io) {
+      req.io.to(`conversation:${targetConversationId}`).emit('receiveMessage', populated);
+      req.io.to(`conversation:${targetConversationId}`).emit('message:new', populated);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Post shared to chat successfully.',
+      chatMessage: populated,
+      sharedMessage: populated,
     });
   } catch (error) {
     next(error);

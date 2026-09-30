@@ -26,7 +26,23 @@ const messageSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['text', 'image', 'video', 'audio', 'file', 'voice', 'system'],
+      enum: [
+        'text',
+        'emoji',
+        'image',
+        'video',
+        'gif',
+        'audio',
+        'file',
+        'voice',
+        'shared_post',
+        'shared_reel',
+        'shared_story',
+        'poll',
+        'event',
+        'system',
+        'media',
+      ],
       default: 'text',
     },
     text: {
@@ -68,6 +84,53 @@ const messageSchema = new mongoose.Schema(
         type: [Number],
         default: [],
       },
+    },
+    sharedContent: {
+      contentType: {
+        type: String,
+        enum: ['post', 'reel', 'story'],
+      },
+      contentId: {
+        type: mongoose.Schema.Types.ObjectId,
+      },
+      authorName: {
+        type: String,
+        default: '',
+      },
+      authorUsername: {
+        type: String,
+        default: '',
+      },
+      titleOrCaption: {
+        type: String,
+        default: '',
+      },
+      thumbnailUrl: {
+        type: String,
+        default: '',
+      },
+      mediaUrl: {
+        type: String,
+        default: '',
+      },
+      isUnavailable: {
+        type: Boolean,
+        default: false,
+      },
+    },
+    pollData: {
+      question: { type: String, default: '' },
+      options: [
+        {
+          text: String,
+          votes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+        },
+      ],
+    },
+    eventData: {
+      title: { type: String, default: '' },
+      date: { type: Date },
+      location: { type: String, default: '' },
     },
     replyTo: {
       type: mongoose.Schema.Types.ObjectId,
@@ -128,6 +191,10 @@ const messageSchema = new mongoose.Schema(
     deletedAt: {
       type: Date,
     },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
     deletedFor: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -157,6 +224,8 @@ messageSchema.virtual('content').get(function () {
 });
 
 messageSchema.index({ conversation: 1, createdAt: 1 });
+messageSchema.index({ conversation: 1, createdAt: -1 });
+messageSchema.index({ conversation: 1, sender: 1, status: 1 });
 messageSchema.index({ sender: 1, clientMessageId: 1 });
 
 module.exports = mongoose.model('Message', messageSchema);

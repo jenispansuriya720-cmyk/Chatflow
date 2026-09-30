@@ -2,6 +2,8 @@ const Reel = require('../models/Reel');
 const Comment = require('../models/Comment');
 const User = require('../models/User');
 const Notification = require('../models/Notification');
+const AuditLog = require('../models/AuditLog');
+const { cleanupMedia } = require('../utils/mediaCleanup');
 
 // @desc    Get reels feed
 // @route   GET /api/reels/feed
@@ -24,24 +26,29 @@ const getReelsFeed = async (req, res, next) => {
     }
 
     const total = await Reel.countDocuments(query);
-    const reels = await Reel.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('author', 'fullName username profilePicture bio');
+    const [reels, user] = await Promise.all([
+      Reel.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('author', 'fullName username profilePicture bio')
+        .lean(),
+      User.findById(currentUserId).select('savedReels').lean(),
+    ]);
 
-    const user = await User.findById(currentUserId);
-
+    const savedSet = new Set((user?.savedReels || []).map((id) => id.toString()));
     const reelsWithFlags = reels.map((reel) => {
-      const r = reel.toObject();
-      r.isLiked = (reel.likes || []).some(
+      const isLiked = (reel.likes || []).some(
         (id) => id.toString() === currentUserId.toString()
       );
-      r.isSaved = (user?.savedReels || []).some(
-        (id) => id.toString() === reel._id.toString()
-      );
-      r.likesCount = reel.likes ? reel.likes.length : 0;
-      return r;
+      const isSaved = savedSet.has(reel._id.toString());
+      const likesCount = reel.likes ? reel.likes.length : 0;
+      return {
+        ...reel,
+        isLiked,
+        isSaved,
+        likesCount,
+      };
     });
 
     res.status(200).json({
@@ -65,21 +72,27 @@ const getUserReels = async (req, res, next) => {
     const { userId } = req.params;
     const currentUserId = req.user._id;
 
-    const reels = await Reel.find({ author: userId })
-      .sort({ createdAt: -1 })
-      .populate('author', 'fullName username profilePicture');
+    const [reels, user] = await Promise.all([
+      Reel.find({ author: userId })
+        .sort({ createdAt: -1 })
+        .populate('author', 'fullName username profilePicture')
+        .lean(),
+      User.findById(currentUserId).select('savedReels').lean(),
+    ]);
 
-    const user = await User.findById(currentUserId);
+    const savedSet = new Set((user?.savedReels || []).map((id) => id.toString()));
     const reelsWithFlags = reels.map((reel) => {
-      const r = reel.toObject();
-      r.isLiked = (reel.likes || []).some(
+      const isLiked = (reel.likes || []).some(
         (id) => id.toString() === currentUserId.toString()
       );
-      r.isSaved = (user?.savedReels || []).some(
-        (id) => id.toString() === reel._id.toString()
-      );
-      r.likesCount = reel.likes ? reel.likes.length : 0;
-      return r;
+      const isSaved = savedSet.has(reel._id.toString());
+      const likesCount = reel.likes ? reel.likes.length : 0;
+      return {
+        ...reel,
+        isLiked,
+        isSaved,
+        likesCount,
+      };
     });
 
     res.status(200).json({
@@ -97,21 +110,24 @@ const getUserReels = async (req, res, next) => {
 // @access  Private
 const getSavedReels = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user._id);
+    const user = await User.findById(req.user._id).select('savedReels').lean();
     const savedIds = user?.savedReels || [];
 
     const reels = await Reel.find({ _id: { $in: savedIds } })
       .sort({ createdAt: -1 })
-      .populate('author', 'fullName username profilePicture');
+      .populate('author', 'fullName username profilePicture')
+      .lean();
 
     const reelsWithFlags = reels.map((reel) => {
-      const r = reel.toObject();
-      r.isLiked = (reel.likes || []).some(
+      const isLiked = (reel.likes || []).some(
         (id) => id.toString() === req.user._id.toString()
       );
-      r.isSaved = true;
-      r.likesCount = reel.likes ? reel.likes.length : 0;
-      return r;
+      return {
+        ...reel,
+        isLiked,
+        isSaved: true,
+        likesCount: reel.likes ? reel.likes.length : 0,
+      };
     });
 
     res.status(200).json({
@@ -129,7 +145,8 @@ const getSavedReels = async (req, res, next) => {
 // @access  Private
 const createReel = async (req, res, next) => {
   try {
-    const { video, thumbnail, caption, hashtags, audio } = req.body;
+    const { thumbnail, caption, hashtags, audio } = req.body;
+    const video = req.body.video || req.body.videoUrl;
 
     if (!video) {
       return res.status(400).json({ success: false, message: 'Video URL is required for a reel.' });
@@ -351,12 +368,41 @@ const deleteReel = async (req, res, next) => {
     if (reel.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
-        message: 'You can only delete your own reels.',
+        message: 'You are not allowed to delete this content.',
       });
     }
 
+    // 1. Delete associated comments
     await Comment.deleteMany({ reel: reel._id });
+
+    // 2. Remove from users' savedReels
+    await User.updateMany(
+      { savedReels: reel._id },
+      { $pull: { savedReels: reel._id } }
+    );
+
+    // 3. Remove related notifications
+    await Notification.deleteMany({ reel: reel._id });
+
+    // 4. Safe media cleanup
+    await cleanupMedia([reel.video, reel.thumbnail].filter(Boolean), req.user._id);
+
+    // 5. Delete reel from database
     await Reel.findByIdAndDelete(req.params.id);
+
+    // 6. Audit log
+    await AuditLog.create({
+      userId: req.user._id,
+      contentType: 'reel',
+      contentId: reel._id,
+      action: 'delete',
+      details: { caption: reel.caption?.slice(0, 80) },
+    });
+
+    // 7. Real-time broadcast
+    if (req.io) {
+      req.io.emit('reel:deleted', { reelId: reel._id });
+    }
 
     res.status(200).json({
       success: true,

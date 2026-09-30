@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Shield,
   Lock,
@@ -26,6 +27,7 @@ import api from '../../services/api';
 const SafetyCenterPage = () => {
   const { user, updateUser, logout } = useAuth();
   const { addToast } = useToast();
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('safety'); // 'safety', 'privacy', 'security', 'community'
   const [loading, setLoading] = useState(true);
@@ -54,6 +56,12 @@ const SafetyCenterPage = () => {
   const [deletePassword, setDeletePassword] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
+
+  // Change Password
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     fetchSafetyData();
@@ -201,18 +209,51 @@ const SafetyCenterPage = () => {
     }
   };
 
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      addToast('New passwords do not match', 'warning');
+      return;
+    }
+    if (newPassword.length < 8) {
+      addToast('Password must be at least 8 characters long', 'warning');
+      return;
+    }
+    try {
+      setIsChangingPassword(true);
+      const res = await api.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+      if (res.data.success) {
+        addToast(res.data.message || 'Password changed successfully.', 'success');
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      }
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to update password', 'error');
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const handleDeleteAccount = async (e) => {
     e.preventDefault();
     if (!deletePassword) return;
 
     try {
       setDeletingAccount(true);
-      const res = await api.delete('/users/account', {
-        data: { password: deletePassword },
+      const res = await api.post('/auth/delete-account', {
+        password: deletePassword,
       });
       if (res.data.success) {
-        addToast('Your account has been deleted. Goodbye!', 'info');
+        addToast('Your account has been permanently deleted.', 'info');
+        setShowDeleteModal(false);
+        setDeletePassword('');
         await logout();
+        navigate('/login');
       }
     } catch (err) {
       addToast(err.response?.data?.message || 'Failed to delete account', 'error');
@@ -621,6 +662,69 @@ const SafetyCenterPage = () => {
                   </div>
                 </div>
 
+                {/* Change Password */}
+                <div className="bg-white dark:bg-dark-card border border-slate-200/80 dark:border-dark-border rounded-3xl p-5 shadow-xs space-y-4">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Change Account Password
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Update your password to keep your account safe. We'll send an email alert whenever your password changes.
+                    </p>
+                  </div>
+                  <form onSubmit={handleChangePassword} className="space-y-3 max-w-md">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                        Current Password
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="••••••••"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        required
+                        className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-dark-border bg-slate-50 dark:bg-dark-hover focus:outline-none focus:border-brand-500 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                        New Password (min. 8 characters)
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        required
+                        minLength={8}
+                        className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-dark-border bg-slate-50 dark:bg-dark-hover focus:outline-none focus:border-brand-500 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                        Confirm New Password
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="••••••••"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        required
+                        minLength={8}
+                        className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 dark:border-dark-border bg-slate-50 dark:bg-dark-hover focus:outline-none focus:border-brand-500 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={isChangingPassword || !currentPassword || !newPassword || !confirmPassword}
+                      className="px-4 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold shadow-md shadow-brand-600/20 disabled:opacity-50 transition-all flex items-center space-x-2"
+                    >
+                      {isChangingPassword && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      <span>Update Password</span>
+                    </button>
+                  </form>
+                </div>
+
                 {/* Download My Data (Section 38) */}
                 <div className="bg-white dark:bg-dark-card border border-slate-200/80 dark:border-dark-border rounded-3xl p-5 shadow-xs flex items-center justify-between">
                   <div className="space-y-0.5 pr-4">
@@ -735,10 +839,10 @@ const SafetyCenterPage = () => {
             </div>
             <div className="space-y-1">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Confirm Account Deletion
+                Permanently Delete Account?
               </h3>
               <p className="text-xs text-slate-400">
-                Please confirm your password to permanently erase your account and all data.
+                This action is permanent and cannot be reversed. Enter your password to confirm deletion.
               </p>
             </div>
 
@@ -766,7 +870,7 @@ const SafetyCenterPage = () => {
                   className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-md shadow-red-600/20 disabled:opacity-50 transition-all flex items-center justify-center space-x-1.5"
                 >
                   {deletingAccount && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  <span>Delete</span>
+                  <span>{deletingAccount ? 'Deleting...' : 'Permanently Delete'}</span>
                 </button>
               </div>
             </form>

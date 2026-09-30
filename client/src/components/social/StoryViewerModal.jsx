@@ -1,15 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Eye, Heart, Flame, Smile, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  X,
+  Send,
+  Eye,
+  Heart,
+  Flame,
+  Smile,
+  ChevronLeft,
+  ChevronRight,
+  MoreVertical,
+  Trash2,
+  Share2,
+  ShieldAlert,
+  AlertCircle,
+} from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { useToast } from '../common/Toast';
 import Avatar from '../common/Avatar';
+import DeleteConfirmModal from '../modals/DeleteConfirmModal';
+import ReportModal from '../modals/ReportModal';
 import api from '../../services/api';
 
 const DURATION_PER_STORY_MS = 5000;
 
 const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => {
   const { user } = useAuth();
+  const { socket } = useSocket();
   const { addToast } = useToast();
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -19,12 +37,48 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
   const [isSendingReply, setIsSendingReply] = useState(false);
   const [showViewersList, setShowViewersList] = useState(false);
 
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [isStoryUnavailable, setIsStoryUnavailable] = useState(false);
+
   const stories = storyGroup?.stories || [];
   const currentStory = stories[currentIndex];
-  const isOwnStory = storyGroup?.user?._id === user?._id;
+  const isOwnStory = Boolean(
+    user?._id && storyGroup?.user?._id && storyGroup.user._id.toString() === user._id.toString()
+  );
 
   const timerRef = useRef(null);
-  const startTimeRef = useRef(null);
+  const optionsRef = useRef(null);
+
+  // Close options dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (optionsRef.current && !optionsRef.current.contains(e.target)) {
+        setOptionsOpen(false);
+      }
+    };
+    if (optionsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [optionsOpen]);
+
+  // Real-time story deletion listener (Requirement 16 & 29)
+  useEffect(() => {
+    if (!socket || !currentStory) return;
+    const handleStoryDeleted = ({ storyId }) => {
+      if (currentStory && (currentStory._id === storyId || currentStory.id === storyId)) {
+        setIsStoryUnavailable(true);
+        setTimeout(() => {
+          setIsStoryUnavailable(false);
+          handleNext();
+        }, 1200);
+      }
+    };
+    socket.on('story:deleted', handleStoryDeleted);
+    return () => socket.off('story:deleted', handleStoryDeleted);
+  }, [socket, currentStory]);
 
   // Mark story as viewed on active change
   useEffect(() => {
@@ -35,7 +89,7 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
 
   // Timed progress bar & auto-advance
   useEffect(() => {
-    if (!currentStory || isPaused) return;
+    if (!currentStory || isPaused || isStoryUnavailable || optionsOpen || deleteModalOpen || showViewersList) return;
 
     const interval = 50; // update every 50ms
     const step = (interval / DURATION_PER_STORY_MS) * 100;
@@ -53,7 +107,7 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentIndex, isPaused, currentStory]);
+  }, [currentIndex, isPaused, currentStory, isStoryUnavailable, optionsOpen, deleteModalOpen, showViewersList]);
 
   const handleNext = () => {
     if (currentIndex < stories.length - 1) {
@@ -102,19 +156,35 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
     }
   };
 
+  const handleDeleteStory = async () => {
+    try {
+      const res = await api.delete(`/stories/${currentStory._id}`);
+      if (res.data.success) {
+        addToast('Story deleted successfully', 'success');
+        if (stories.length > 1) {
+          handleNext();
+        } else {
+          onClose();
+        }
+      }
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete story', 'error');
+    }
+  };
+
   if (!storyGroup || !currentStory) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-2 sm:p-4 select-none animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 sm:bg-black/90 backdrop-blur-md p-0 sm:p-4 select-none animate-fade-in"
       onMouseDown={() => setIsPaused(true)}
       onMouseUp={() => setIsPaused(false)}
       onTouchStart={() => setIsPaused(true)}
       onTouchEnd={() => setIsPaused(false)}
     >
-      <div className="relative w-full max-w-sm sm:max-w-md h-[88vh] max-h-[780px] bg-slate-950 rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between border border-slate-800">
+      <div className="relative w-full h-full sm:max-w-md sm:h-[88vh] sm:max-h-[780px] bg-slate-950 rounded-none sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col justify-between border-0 sm:border sm:border-slate-800">
         {/* Top Progress Bars Segmented */}
-        <div className="absolute top-3 left-3 right-3 z-30 flex items-center space-x-1.5">
+        <div className="absolute top-2.5 sm:top-3 pt-safe sm:pt-0 left-3 right-3 z-30 flex items-center space-x-1.5">
           {stories.map((s, idx) => (
             <div
               key={s._id || idx}
@@ -136,7 +206,7 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
         </div>
 
         {/* Top User Info & Controls */}
-        <div className="absolute top-6 left-4 right-4 z-30 flex items-center justify-between text-white">
+        <div className="absolute top-6 sm:top-6 pt-safe sm:pt-0 left-4 right-4 z-30 flex items-center justify-between text-white">
           <div className="flex items-center space-x-2.5">
             <Avatar
               src={storyGroup.user.profilePicture}
@@ -153,17 +223,90 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
             </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-1.5" ref={optionsRef}>
+            {/* Story Options Dropdown */}
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOptionsOpen(!optionsOpen);
+                }}
+                className="p-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+                title="Story options"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+
+              {optionsOpen && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-9 w-44 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl z-40 py-1.5 text-xs text-white animate-fade-in"
+                >
+                  {/* STORY OWNER ACTIONS (Requirement 16 & 30) */}
+                  {isOwnStory ? (
+                    <>
+                      <button
+                        onClick={() => {
+                          setOptionsOpen(false);
+                          setShowViewersList(true);
+                          setIsPaused(true);
+                        }}
+                        className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-white/10 text-left transition-colors"
+                      >
+                        <Eye className="w-4 h-4 text-brand-400" />
+                        <span>Viewers ({currentStory.viewers?.length || 0})</span>
+                      </button>
+
+                      <div className="my-1 border-t border-slate-700" />
+
+                      <button
+                        onClick={() => {
+                          setOptionsOpen(false);
+                          setDeleteModalOpen(true);
+                        }}
+                        className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-rose-950/40 text-rose-400 text-left transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-500" />
+                        <span>Delete Story</span>
+                      </button>
+                    </>
+                  ) : (
+                    /* OTHER USER ACTIONS ONLY (Requirement 16 & 30) */
+                    <>
+                      <button
+                        onClick={() => {
+                          setOptionsOpen(false);
+                          setReportModalOpen(true);
+                        }}
+                        className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-rose-950/40 text-rose-400 text-left transition-colors"
+                      >
+                        <ShieldAlert className="w-4 h-4 text-rose-500" />
+                        <span>Report Story</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Main Media & Text Area */}
         <div className="relative flex-1 flex items-center justify-center bg-black overflow-hidden">
-          {currentStory.media ? (
+          {isStoryUnavailable ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 text-rose-400 text-xs font-semibold p-4 text-center z-30 animate-fade-in space-y-2">
+              <AlertCircle className="w-6 h-6" />
+              <span>This story is no longer available.</span>
+            </div>
+          ) : currentStory.media ? (
             <img
               src={currentStory.media}
               alt="Story"
@@ -176,7 +319,7 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
           )}
 
           {/* Text caption overlay if image has text */}
-          {currentStory.media && currentStory.text && (
+          {!isStoryUnavailable && currentStory.media && currentStory.text && (
             <div className="absolute bottom-16 left-4 right-4 p-3 bg-black/60 backdrop-blur-xs rounded-2xl text-white text-xs font-medium text-center shadow-lg">
               {currentStory.text}
             </div>
@@ -202,7 +345,7 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
         </div>
 
         {/* Bottom Interaction Area */}
-        <div className="relative z-30 p-3 bg-gradient-to-t from-black via-black/80 to-transparent space-y-2">
+        <div className="relative z-30 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black via-black/80 to-transparent space-y-2">
           {isOwnStory ? (
             /* Viewer list indicator for story creator */
             <div
@@ -260,7 +403,7 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
           )}
         </div>
 
-        {/* Story Viewers Drawer for Author (Section 110) */}
+        {/* Story Viewers Drawer for Author */}
         {showViewersList && (
           <div
             onClick={(e) => e.stopPropagation()}
@@ -326,6 +469,26 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Modal (Requirement 16 & 31) */}
+      <DeleteConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleDeleteStory}
+        title="Delete this story?"
+        description="It will no longer be visible to people who can view it."
+        confirmLabel="Delete"
+        isOwn={isOwnStory}
+      />
+
+      {/* Report Modal */}
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        targetType="story"
+        targetId={currentStory._id}
+        targetUser={storyGroup.user}
+      />
     </div>
   );
 };

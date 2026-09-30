@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { User, Mail, Phone, Lock, Save, Camera, Sparkles, Upload } from 'lucide-react';
+import { User, Mail, Phone, Lock, Save, Camera, Sparkles, Upload, Trash2 } from 'lucide-react';
 import Sidebar from '../../components/layout/Sidebar';
 import Avatar from '../../components/common/Avatar';
 import AvatarCropModal from '../../components/modals/AvatarCropModal';
+import DeleteConfirmModal from '../../components/modals/DeleteConfirmModal';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../components/common/Toast';
 import api from '../../services/api';
@@ -28,7 +29,21 @@ const ProfilePage = () => {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState(null);
+  const [avatarDeleteModalOpen, setAvatarDeleteModalOpen] = useState(false);
   const fileInputRef = useRef(null);
+
+  const handleRemoveAvatar = async () => {
+    try {
+      const res = await api.delete('/users/profile-picture');
+      if (res.data?.success) {
+        setFormData((prev) => ({ ...prev, profilePicture: '' }));
+        updateUser({ ...user, profilePicture: '' });
+        addToast('Profile picture removed successfully!', 'success');
+      }
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to remove profile picture', 'error');
+    }
+  };
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -156,6 +171,16 @@ const ProfilePage = () => {
                     <Camera className="w-3.5 h-3.5 text-brand-500" />
                     <span>Randomize Avatar</span>
                   </button>
+                  {Boolean(formData.profilePicture) && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarDeleteModalOpen(true)}
+                      className="px-3.5 py-1.5 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove Photo</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -312,6 +337,15 @@ const ProfilePage = () => {
           setFormData((prev) => ({ ...prev, profilePicture: croppedDataUrl }));
           addToast('Profile picture cropped! Click Save Profile to apply.', 'info');
         }}
+      />
+
+      {/* Remove Profile Picture Confirm Modal */}
+      <DeleteConfirmModal
+        isOpen={avatarDeleteModalOpen}
+        onClose={() => setAvatarDeleteModalOpen(false)}
+        onConfirm={handleRemoveAvatar}
+        title="Remove Profile Picture?"
+        description="Are you sure you want to remove your profile picture? Your profile will display your initials until you upload a new photo."
       />
     </div>
   );

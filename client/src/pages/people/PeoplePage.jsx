@@ -109,12 +109,12 @@ const PeoplePage = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100 select-none">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100 select-none">
       <Sidebar />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Top Header */}
-        <header className="px-6 py-4 border-b border-slate-200 dark:border-dark-border bg-white dark:bg-dark-surface flex items-center justify-between flex-shrink-0">
+        <header className="px-4 sm:px-6 pt-14 md:pt-4 pb-4 border-b border-slate-200 dark:border-dark-border bg-white dark:bg-dark-surface flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
               <Users className="w-5 h-5" />
@@ -140,12 +140,12 @@ const PeoplePage = () => {
               placeholder="Search people by name or @username..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-dark-border bg-slate-50 dark:bg-dark-hover focus:outline-none focus:border-brand-500 text-slate-900 dark:text-white"
+              className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
 
-          {/* Interests Pills */}
-          <div className="flex items-center space-x-2 overflow-x-auto pb-1 text-xs font-bold no-scrollbar">
+          {/* Interest Chips */}
+          <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar pb-1">
             {INTERESTS.map((tag) => (
               <button
                 key={tag}
@@ -163,7 +163,7 @@ const PeoplePage = () => {
         </div>
 
         {/* People Grid Container */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6">
           <div className="max-w-4xl mx-auto">
             {loading ? (
               <div className="flex flex-col items-center justify-center p-16 space-y-3">

@@ -118,13 +118,14 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
   };
 
   return (
-    <header className="relative flex items-center justify-between px-4 py-3 bg-white dark:bg-dark-surface border-b border-slate-200 dark:border-dark-border z-20 transition-colors">
+    <header className="relative flex items-center justify-between px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 bg-white dark:bg-dark-surface border-b border-slate-200 dark:border-dark-border z-20 transition-colors">
       {/* Left: Back button (mobile) + Avatar + Info */}
-      <div className="flex items-center space-x-3 min-w-0">
+      <div className="flex items-center space-x-2.5 min-w-0">
         {onBack && (
           <button
             onClick={onBack}
-            className="md:hidden p-1.5 -ml-1 text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+            className="md:hidden p-2 min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+            title="Back to conversation list"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -154,10 +155,10 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
       </div>
 
       {/* Right: Actions */}
-      <div className="flex items-center space-x-1">
+      <div className="flex items-center space-x-0.5">
         <button
           onClick={() => handleStartCall('audio')}
-          className="p-2 text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-brand-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+          className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-brand-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
           title="Voice Call"
         >
           <Phone className="w-4 h-4" />
@@ -165,7 +166,7 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
 
         <button
           onClick={() => handleStartCall('video')}
-          className="p-2 text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-brand-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+          className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-brand-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
           title="Video Call"
         >
           <Video className="w-4 h-4" />
@@ -173,7 +174,7 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
 
         <button
           onClick={handleInviteToLive}
-          className="p-2 text-slate-500 hover:text-red-500 dark:text-dark-muted dark:hover:text-red-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+          className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-red-500 dark:text-dark-muted dark:hover:text-red-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
           title="Go Live / Invite to Live"
         >
           <Radio className="w-4 h-4 text-red-500" />
@@ -181,7 +182,7 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
 
         <button
           onClick={onToggleSearch}
-          className="p-2 text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+          className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
           title="Search in conversation"
         >
           <Search className="w-4 h-4" />
@@ -191,7 +192,7 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="p-2 text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+            className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
             title="Options"
           >
             <MoreVertical className="w-4 h-4" />

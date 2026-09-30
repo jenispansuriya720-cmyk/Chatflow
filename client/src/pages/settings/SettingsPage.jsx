@@ -299,17 +299,18 @@ const SettingsPage = () => {
 
     try {
       setIsDeletingAccount(true);
-      const res = await api.delete('/users/account', {
-        data: { password: deletePassword },
+      const res = await api.post('/auth/delete-account', {
+        password: deletePassword,
       });
       if (res.data.success) {
-        addToast('Account permanently deleted', 'info');
+        addToast('Your account has been permanently deleted.', 'info');
         setDeleteModalOpen(false);
+        setDeletePassword('');
         await logout();
-        navigate('/welcome');
+        navigate('/login');
       }
     } catch (err) {
-      addToast(err.response?.data?.message || 'Invalid password. Deletion cancelled.', 'error');
+      addToast(err.response?.data?.message || 'Invalid password. Deletion failed.', 'error');
     } finally {
       setIsDeletingAccount(false);
     }
@@ -382,12 +383,12 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Sticky Global Settings Header */}
-        <header className="bg-white dark:bg-dark-surface border-b border-slate-200 dark:border-dark-border px-4 md:px-8 py-4 flex-shrink-0 z-20">
+        <header className="bg-white dark:bg-dark-surface border-b border-slate-200 dark:border-dark-border px-4 md:px-8 pt-14 md:pt-4 pb-4 flex-shrink-0 z-20">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="flex items-center space-x-2.5">
@@ -518,7 +519,7 @@ const SettingsPage = () => {
         <div className="flex-1 flex overflow-hidden max-w-6xl w-full mx-auto">
           {/* Left Settings Sidebar (Desktop & Mobile Category List) */}
           <aside
-            className={`w-full md:w-72 lg:w-80 bg-white dark:bg-dark-surface border-r border-slate-200 dark:border-dark-border flex flex-col overflow-y-auto flex-shrink-0 transition-all ${
+            className={`w-full md:w-72 lg:w-80 bg-white dark:bg-dark-surface border-r border-slate-200 dark:border-dark-border flex flex-col overflow-y-auto pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-4 flex-shrink-0 transition-all ${
               mobileDetailOpen ? 'hidden md:flex' : 'flex'
             }`}
           >
@@ -538,7 +539,7 @@ const SettingsPage = () => {
                           <button
                             key={cat.id}
                             onClick={() => selectCategory(cat.id)}
-                            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-semibold transition-all cursor-pointer ${
+                            className={`w-full flex items-center justify-between px-3.5 py-3 min-h-[44px] rounded-2xl text-xs font-semibold transition-all cursor-pointer ${
                               isActive
                                 ? 'bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold'
                                 : cat.danger
@@ -561,9 +562,9 @@ const SettingsPage = () => {
             </div>
           </aside>
 
-          {/* Right Main Settings Panel (Desktop Content or Mobile Detail Screen) */}
+          {/* Right Detail Pane */}
           <main
-            className={`flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-12 ${
+            className={`flex-1 overflow-y-auto p-4 md:p-8 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-12 ${
               mobileDetailOpen ? 'flex flex-col' : 'hidden md:flex flex-col'
             }`}
           >
@@ -571,7 +572,7 @@ const SettingsPage = () => {
             <div className="md:hidden flex items-center space-x-2 pb-4 mb-4 border-b border-slate-200 dark:border-dark-border">
               <button
                 onClick={() => setMobileDetailOpen(false)}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-dark-card text-slate-700 dark:text-slate-300 flex items-center space-x-1 text-xs font-bold"
+                className="p-2 min-h-[44px] rounded-xl bg-slate-100 dark:bg-dark-card text-slate-700 dark:text-slate-300 flex items-center space-x-1.5 text-xs font-bold"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>All Settings</span>
@@ -614,7 +615,6 @@ const SettingsPage = () => {
                     <SettingRow
                       title="Email Address"
                       description={user?.email}
-                      badge={settings?.account?.emailVerified ? 'Verified' : 'Unverified'}
                       control={
                         <span className="text-xs font-bold text-slate-400">Primary</span>
                       }

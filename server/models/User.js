@@ -39,6 +39,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    coverImage: {
+      type: String,
+      default: '',
+    },
     bio: {
       type: String,
       default: 'Hey there! I am using ChatFlow.',
@@ -139,11 +143,12 @@ const userSchema = new mongoose.Schema(
     sessions: [
       {
         sessionId: { type: String, required: true },
-        device: { type: String, default: 'Desktop' },
         browser: { type: String, default: 'Chrome' },
         os: { type: String, default: 'Windows' },
+        device: { type: String, default: 'Desktop' },
         ip: { type: String, default: '127.0.0.1' },
         location: { type: String, default: 'Local Network' },
+        loggedInAt: { type: Date, default: Date.now },
         lastActive: { type: Date, default: Date.now },
       },
     ],
@@ -174,8 +179,6 @@ const userSchema = new mongoose.Schema(
         default: 'default',
       },
     },
-    resetPasswordToken: String,
-    resetPasswordExpires: Date,
   },
   {
     timestamps: true,

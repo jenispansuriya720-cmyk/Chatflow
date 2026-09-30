@@ -26,7 +26,6 @@ const SecurityCheckupModal = ({
 
   const is2FA = settings?.security?.twoFactorEnabled || false;
   const sessionsCount = sessions.length || 1;
-  const isEmailVerified = settings?.account?.emailVerified ?? true;
   const isPhoneVerified = settings?.account?.phoneVerified ?? false;
 
   // Security status calculation

@@ -38,7 +38,8 @@ const LoginPage = () => {
         setError(res.message || 'Login failed. Please check credentials.');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      const data = err.response?.data;
+      setError(data?.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -62,8 +63,8 @@ const LoginPage = () => {
 
         {/* Error alert */}
         {error && (
-          <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-500 text-xs rounded-xl font-medium">
-            {error}
+          <div className="p-3.5 border rounded-2xl text-xs font-medium space-y-2 bg-rose-500/10 border-rose-500/30 text-rose-500">
+            <p>{error}</p>
           </div>
         )}
 
@@ -87,17 +88,9 @@ const LoginPage = () => {
           </div>
 
           <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Password
-              </label>
-              <Link
-                to="/forgot-password"
-                className="text-xs font-medium text-brand-600 dark:text-brand-400 hover:underline"
-              >
-                Forgot password?
-              </Link>
-            </div>
+            <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Password
+            </label>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input

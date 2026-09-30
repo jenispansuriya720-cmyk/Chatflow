@@ -4,8 +4,10 @@ const Follow = require('../models/Follow');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const Notification = require('../models/Notification');
+const AuditLog = require('../models/AuditLog');
+const { cleanupMedia } = require('../utils/mediaCleanup');
 
-// @desc    Get active stories grouped by user
+// @desc    Get active stories grouped by user (Current user + Followed users ONLY)
 // @route   GET /api/stories
 // @access  Private
 const getStories = async (req, res, next) => {
@@ -13,26 +15,66 @@ const getStories = async (req, res, next) => {
     const currentUserId = req.user._id;
     const now = new Date();
 
-    // Get list of followed authors
-    const follows = await Follow.find({ follower: currentUserId, status: 'accepted' });
-    const followedIds = new Set(follows.map((f) => f.following.toString()));
+    // 1. Get accepted followings of the current user
+    const follows = await Follow.find({
+      follower: currentUserId,
+      status: 'accepted',
+    })
+      .select('following')
+      .lean();
 
-    const rawStories = await Story.find({ expiresAt: { $gt: now } })
+    const followedIds = follows
+      .map((f) => f.following)
+      .filter(Boolean);
+
+    // 2. Filter out anyone blocked by current user
+    const blockedIds = (req.user.blockedUsers || []).map((id) => id.toString());
+
+    // 3. Filter out anyone who has blocked current user
+    const usersWhoBlockedMe = await User.find({
+      blockedUsers: currentUserId,
+    })
+      .select('_id')
+      .lean();
+    const blockedByIds = new Set(usersWhoBlockedMe.map((u) => u._id.toString()));
+
+    const eligibleFollowedIds = followedIds.filter((id) => {
+      const idStr = id.toString();
+      return !blockedIds.includes(idStr) && !blockedByIds.has(idStr);
+    });
+
+    // 4. Target authors to query: ONLY current user + eligible followed users
+    const targetAuthorIds = [currentUserId, ...eligibleFollowedIds];
+
+    // 5. Database query: ONLY active unexpired stories belonging to targetAuthorIds
+    const rawStories = await Story.find({
+      author: { $in: targetAuthorIds },
+      expiresAt: { $gt: now },
+    })
       .sort({ createdAt: 1 })
       .populate('author', 'fullName username profilePicture isPrivate')
-      .populate('viewers.user', 'fullName username profilePicture');
+      .populate('viewers.user', 'fullName username profilePicture')
+      .lean();
 
-    // Filter out stories from private authors who are not followed
+    // 6. Enforce story privacy and visibility
     const activeStories = rawStories.filter((story) => {
       const author = story.author;
       if (!author) return false;
       const authorId = author._id.toString();
+
+      // Current user can always view their own stories
       if (authorId === currentUserId.toString()) return true;
-      if (author.isPrivate && !followedIds.has(authorId)) return false;
+
+      // Author MUST be someone the current user follows
+      const isFollowed = eligibleFollowedIds.some(
+        (id) => id.toString() === authorId
+      );
+      if (!isFollowed) return false;
+
       return true;
     });
 
-    // Group stories by author ID
+    // 7. Group stories by author ID
     const groupedMap = new Map();
 
     activeStories.forEach((story) => {
@@ -42,12 +84,15 @@ const getStories = async (req, res, next) => {
           user: story.author,
           stories: [],
           hasUnviewed: false,
+          latestStoryCreatedAt: story.createdAt,
         });
       }
 
       const group = groupedMap.get(authorId);
-      const isViewed = story.viewers.some(
-        (v) => v.user && (v.user._id || v.user).toString() === currentUserId.toString()
+      const isViewed = (story.viewers || []).some(
+        (v) =>
+          v.user &&
+          (v.user._id || v.user).toString() === currentUserId.toString()
       );
 
       if (!isViewed && authorId !== currentUserId.toString()) {
@@ -55,20 +100,35 @@ const getStories = async (req, res, next) => {
       }
 
       group.stories.push({
-        ...story.toObject(),
+        ...story,
         isViewed,
       });
+
+      if (new Date(story.createdAt) > new Date(group.latestStoryCreatedAt)) {
+        group.latestStoryCreatedAt = story.createdAt;
+      }
     });
 
     const groups = Array.from(groupedMap.values());
 
-    // Sort: current user's group first, then unviewed, then viewed
+    // 8. Sort:
+    // 1) Current user's group first
+    // 2) Followed users with unviewed stories (newest first)
+    // 3) Followed users with viewed stories (newest first)
     groups.sort((a, b) => {
-      if (a.user._id.toString() === currentUserId.toString()) return -1;
-      if (b.user._id.toString() === currentUserId.toString()) return 1;
+      const aId = a.user._id.toString();
+      const bId = b.user._id.toString();
+      const myId = currentUserId.toString();
+
+      if (aId === myId) return -1;
+      if (bId === myId) return 1;
+
       if (a.hasUnviewed && !b.hasUnviewed) return -1;
       if (!a.hasUnviewed && b.hasUnviewed) return 1;
-      return 0;
+
+      return (
+        new Date(b.latestStoryCreatedAt) - new Date(a.latestStoryCreatedAt)
+      );
     });
 
     res.status(200).json({
@@ -108,6 +168,14 @@ const createStory = async (req, res, next) => {
       'author',
       'fullName username profilePicture'
     );
+
+    // Broadcast real-time story creation
+    if (req.io) {
+      req.io.emit('story:created', {
+        story: populated,
+        authorId: req.user._id,
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -268,11 +336,31 @@ const deleteStory = async (req, res, next) => {
     if (story.author.toString() !== req.user._id.toString()) {
       return res.status(403).json({
         success: false,
-        message: 'You can only delete your own stories.',
+        message: 'You are not allowed to delete this content.',
       });
     }
 
+    // 1. Safe media cleanup
+    if (story.media) {
+      await cleanupMedia(story.media, req.user._id);
+    }
+
+    // 2. Delete story from database
     await Story.findByIdAndDelete(req.params.id);
+
+    // 3. Audit log
+    await AuditLog.create({
+      userId: req.user._id,
+      contentType: 'story',
+      contentId: story._id,
+      action: 'delete',
+      details: { textPreview: story.text?.slice(0, 80) },
+    });
+
+    // 4. Real-time broadcast
+    if (req.io) {
+      req.io.emit('story:deleted', { storyId: story._id, authorId: story.author });
+    }
 
     res.status(200).json({
       success: true,

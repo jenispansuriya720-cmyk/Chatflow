@@ -6,6 +6,7 @@ import {
   Send,
   X,
   Image as ImageIcon,
+  Camera,
   FileText,
   Video as VideoIcon,
   Loader2,
@@ -35,12 +36,14 @@ const MessageInput = () => {
   const [text, setText] = useState('');
   const [attachments, setAttachments] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
 
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const typingTimerRef = useRef(null);
   const emojiPickerRef = useRef(null);
   const attachMenuRef = useRef(null);
@@ -84,6 +87,13 @@ const MessageInput = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setUploadError('');
+    // 50MB validation limit
+    if (file.size > 50 * 1024 * 1024) {
+      setUploadError('File size exceeds 50MB limit.');
+      return;
+    }
+
     try {
       setIsUploading(true);
       setShowAttachMenu(false);
@@ -100,9 +110,11 @@ const MessageInput = () => {
       }
     } catch (err) {
       console.error('File upload failed:', err);
+      setUploadError('Upload failed. Please try again.');
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
     }
   };
 
@@ -165,7 +177,7 @@ const MessageInput = () => {
 
   return (
     <div
-      className="relative px-4 py-3 select-none border-t transition-colors"
+      className="relative px-3 sm:px-4 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] select-none border-t transition-colors"
       style={{
         backgroundColor: 'var(--chat-header, #ffffff)',
         borderColor: 'var(--chat-border, #e2e8f0)',
@@ -201,6 +213,27 @@ const MessageInput = () => {
         />
       ) : (
         <>
+          {/* Upload Error Banner */}
+          {uploadError && (
+            <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-600 dark:text-rose-400 animate-slide-up">
+              <span>{uploadError}</span>
+              <button
+                onClick={() => setUploadError('')}
+                className="p-1 hover:text-rose-800 dark:hover:text-rose-200"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Upload Progress Banner */}
+          {isUploading && (
+            <div className="flex items-center space-x-2 px-3 py-1.5 mb-2 bg-brand-500/10 border border-brand-500/20 rounded-xl text-xs text-brand-600 dark:text-brand-400 font-medium animate-pulse">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Uploading attachment...</span>
+            </div>
+          )}
+
           {/* Replying Banner */}
           {replyingTo && (
             <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-slate-100 dark:bg-dark-hover rounded-xl text-xs border-l-4 border-brand-500 animate-slide-up">
@@ -256,7 +289,7 @@ const MessageInput = () => {
             <div className="relative" ref={attachMenuRef}>
               <button
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
-                className="p-2 text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
                 title="Attach file"
               >
                 <Paperclip className="w-5 h-5" />
@@ -269,8 +302,30 @@ const MessageInput = () => {
                 className="hidden"
               />
 
+              <input
+                type="file"
+                ref={cameraInputRef}
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+
               {showAttachMenu && (
-                <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl p-2 w-44 space-y-1 animate-slide-up z-30 text-xs font-medium text-slate-700 dark:text-slate-200">
+                <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl p-2 w-48 space-y-1 animate-slide-up z-30 text-xs font-medium text-slate-700 dark:text-slate-200">
+                  <button
+                    onClick={() => {
+                      if (cameraInputRef.current) {
+                        cameraInputRef.current.click();
+                      }
+                      setShowAttachMenu(false);
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                  >
+                    <Camera className="w-4 h-4 text-amber-500" />
+                    <span>Take Photo</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       fileInputRef.current.accept = 'image/*';
@@ -279,7 +334,7 @@ const MessageInput = () => {
                     className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
                   >
                     <ImageIcon className="w-4 h-4 text-emerald-500" />
-                    <span>Photo</span>
+                    <span>Photo Gallery</span>
                   </button>
 
                   <button
@@ -311,7 +366,7 @@ const MessageInput = () => {
             <div className="relative" ref={emojiPickerRef}>
               <button
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-2 text-slate-500 hover:text-amber-500 dark:text-dark-muted dark:hover:text-amber-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-amber-500 dark:text-dark-muted dark:hover:text-amber-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
                 title="Insert emoji"
               >
                 <Smile className="w-5 h-5" />

@@ -28,5 +28,6 @@ router.post('/:id/save', toggleSave);
 router.get('/:id/comments', getComments);
 router.post('/:id/comments', addComment);
 router.post('/:id/share', sharePostToChat);
+router.post('/:id/share-to-chat', sharePostToChat);
 
 module.exports = router;

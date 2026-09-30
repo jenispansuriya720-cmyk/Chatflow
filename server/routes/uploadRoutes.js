@@ -3,34 +3,51 @@ const router = express.Router();
 const upload = require('../middleware/upload');
 const { protect } = require('../middleware/auth');
 
-router.post('/', protect, upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: 'No file uploaded.' });
-  }
+const Media = require('../models/Media');
 
-  // Determine fileType
-  let fileType = 'document';
-  if (req.file.mimetype.startsWith('image/')) {
-    fileType = 'image';
-  } else if (req.file.mimetype.startsWith('audio/')) {
-    fileType = 'audio';
-  } else if (req.file.mimetype.startsWith('video/')) {
-    fileType = 'video';
-  }
+router.post('/', protect, upload.single('file'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded.' });
+    }
 
-  // Construct accessible URL
-  const fileUrl = `/uploads/${req.file.filename}`;
+    // Determine fileType
+    let fileType = 'document';
+    if (req.file.mimetype.startsWith('image/')) {
+      fileType = 'image';
+    } else if (req.file.mimetype.startsWith('audio/')) {
+      fileType = 'audio';
+    } else if (req.file.mimetype.startsWith('video/')) {
+      fileType = 'video';
+    }
 
-  res.status(200).json({
-    success: true,
-    file: {
+    // Construct accessible URL
+    const fileUrl = `/uploads/${req.file.filename}`;
+
+    // Record Media entry for ownership tracking
+    await Media.create({
+      ownerId: req.user._id,
       url: fileUrl,
-      fileType,
+      type: fileType,
+      entityType: req.body.entityType || 'general',
       name: req.file.originalname,
       size: req.file.size,
       mimeType: req.file.mimetype,
-    },
-  });
+    });
+
+    res.status(200).json({
+      success: true,
+      file: {
+        url: fileUrl,
+        fileType,
+        name: req.file.originalname,
+        size: req.file.size,
+        mimeType: req.file.mimetype,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;

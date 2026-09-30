@@ -49,16 +49,33 @@ const ReelsPage = () => {
     }
   };
 
+  const touchStartY = useRef(0);
+  const handleTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+  const handleTouchEnd = (e) => {
+    const diff = touchStartY.current - e.changedTouches[0].clientY;
+    if (diff > 50) {
+      handleNext();
+    } else if (diff < -50) {
+      handlePrev();
+    }
+  };
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-white select-none">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-950 text-white select-none">
       <Sidebar onOpenCreateReel={() => setCreateReelOpen(true)} />
 
-      <main className="flex-1 h-full flex flex-col items-center justify-center relative p-2 sm:p-6 pb-20 md:pb-6 overflow-hidden">
+      <main
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className="flex-1 h-full flex flex-col items-center justify-center relative p-2 sm:p-6 pt-14 md:pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6 overflow-hidden"
+      >
         {/* Floating Upload Reel Action button */}
         <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30">
           <button
             onClick={() => setCreateReelOpen(true)}
-            className="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-lg transition-colors"
+            className="px-4 py-2 min-h-[40px] rounded-2xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs font-semibold flex items-center space-x-1.5 shadow-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             <span>Upload Reel</span>

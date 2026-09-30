@@ -24,7 +24,6 @@ const userSettingsSchema = new mongoose.Schema(
         enum: ['active', 'deactivated'],
         default: 'active',
       },
-      emailVerified: { type: Boolean, default: true },
       phoneVerified: { type: Boolean, default: false },
     },
 
@@ -376,7 +375,7 @@ const userSettingsSchema = new mongoose.Schema(
       autoplayOnMobile: { type: Boolean, default: false },
       highQualityMedia: { type: Boolean, default: true },
       dataSaver: { type: Boolean, default: false },
-      cachedMediaBytes: { type: Number, default: 142605824 }, // 136 MB mock cache
+      cachedMediaBytes: { type: Number, default: 0 },
     },
 
     // 17. Connected Apps (Section 19)

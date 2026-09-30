@@ -73,5 +73,6 @@ const reelSchema = new mongoose.Schema(
 
 reelSchema.index({ createdAt: -1 });
 reelSchema.index({ views: -1 });
+reelSchema.index({ author: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Reel', reelSchema);

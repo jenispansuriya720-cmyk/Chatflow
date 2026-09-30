@@ -21,7 +21,7 @@ const runSafetyAnalyticsTests = async () => {
   };
 
   const req = async (path, method = 'GET', body = null, token = null) => {
-    const headers = { 'Content-Type': 'application/json' };
+    const headers = { 'Content-Type': 'application/json', 'Connection': 'close' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
     const opts = { method, headers };
     if (body) opts.body = JSON.stringify(body);
@@ -132,10 +132,10 @@ const runSafetyAnalyticsTests = async () => {
     console.log(`🎉 TEST SUITE COMPLETE: ${passed} Passed, ${failed} Failed`);
     console.log('=============================================================\n');
 
-    process.exit(failed > 0 ? 1 : 0);
+    process.exitCode = failed > 0 ? 1 : 0;
   } catch (err) {
     console.error('Fatal test exception:', err);
-    process.exit(1);
+    process.exitCode = 1;
   }
 };
 

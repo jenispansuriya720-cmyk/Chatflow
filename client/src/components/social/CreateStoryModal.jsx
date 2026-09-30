@@ -3,16 +3,36 @@ import { X, Image, Sparkles, Send, Loader2 } from 'lucide-react';
 import { useToast } from '../common/Toast';
 import api from '../../services/api';
 
-const SAMPLE_STORY_BACKGROUNDS = [
-  'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1534972195531-a756b1126f24?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=800&auto=format&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&auto=format&fit=crop&q=80',
+const STORY_GRADIENT_PRESETS = [
+  {
+    name: 'Sunset Glow',
+    gradient: 'bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600',
+    dataUri:
+      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23f59e0b"/><stop offset="50%" stop-color="%23f43f5e"/><stop offset="100%" stop-color="%239333ea"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/></svg>',
+  },
+  {
+    name: 'Ocean Breeze',
+    gradient: 'bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-700',
+    dataUri:
+      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%2306b6d4"/><stop offset="50%" stop-color="%232563eb"/><stop offset="100%" stop-color="%234338ca"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/></svg>',
+  },
+  {
+    name: 'Emerald Aurora',
+    gradient: 'bg-gradient-to-tr from-emerald-400 via-teal-600 to-slate-900',
+    dataUri:
+      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%2334d399"/><stop offset="50%" stop-color="%230d9488"/><stop offset="100%" stop-color="%230f172a"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/></svg>',
+  },
+  {
+    name: 'Midnight Neon',
+    gradient: 'bg-gradient-to-tr from-violet-600 via-purple-900 to-black',
+    dataUri:
+      'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="600" height="900"><defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%237c3aed"/><stop offset="50%" stop-color="%23581c87"/><stop offset="100%" stop-color="%23000000"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g)"/></svg>',
+  },
 ];
 
 const CreateStoryModal = ({ isOpen, onClose, onStoryCreated }) => {
   const { addToast } = useToast();
-  const [mediaUrl, setMediaUrl] = useState(SAMPLE_STORY_BACKGROUNDS[0]);
+  const [mediaUrl, setMediaUrl] = useState(STORY_GRADIENT_PRESETS[0].dataUri);
   const [text, setText] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -86,14 +106,14 @@ const CreateStoryModal = ({ isOpen, onClose, onStoryCreated }) => {
         </div>
 
         {/* Story Preview Container */}
-        <div className="relative h-64 rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center">
+        <div className="relative h-64 rounded-2xl overflow-hidden bg-slate-900 flex items-center justify-center shadow-inner">
           <img
             src={mediaUrl}
             alt="Preview"
             className="w-full h-full object-cover"
           />
           {text && (
-            <div className="absolute bottom-4 left-3 right-3 p-2 bg-black/60 backdrop-blur-xs rounded-xl text-white text-xs text-center font-semibold">
+            <div className="absolute bottom-4 left-3 right-3 p-2.5 bg-black/65 backdrop-blur-md rounded-xl text-white text-xs text-center font-semibold drop-shadow-md">
               {text}
             </div>
           )}
@@ -102,17 +122,16 @@ const CreateStoryModal = ({ isOpen, onClose, onStoryCreated }) => {
         {/* Change Background / Upload Photo */}
         <div className="space-y-2">
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block">
-            Choose Background:
+            Choose Background or Upload Photo:
           </span>
-          <div className="flex items-center space-x-2">
-            {SAMPLE_STORY_BACKGROUNDS.map((bg, idx) => (
-              <img
+          <div className="flex items-center space-x-2.5">
+            {STORY_GRADIENT_PRESETS.map((preset, idx) => (
+              <div
                 key={idx}
-                src={bg}
-                alt={`Sample ${idx}`}
-                onClick={() => setMediaUrl(bg)}
-                className={`w-10 h-10 rounded-xl object-cover cursor-pointer transition-all ${
-                  mediaUrl === bg ? 'ring-2 ring-brand-500 scale-105' : 'opacity-70 hover:opacity-100'
+                title={preset.name}
+                onClick={() => setMediaUrl(preset.dataUri)}
+                className={`w-10 h-10 rounded-xl ${preset.gradient} cursor-pointer transition-all ${
+                  mediaUrl === preset.dataUri ? 'ring-2 ring-brand-500 scale-105' : 'opacity-70 hover:opacity-100'
                 }`}
               />
             ))}
@@ -120,7 +139,7 @@ const CreateStoryModal = ({ isOpen, onClose, onStoryCreated }) => {
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="w-10 h-10 rounded-xl border border-dashed border-slate-300 dark:border-dark-border flex items-center justify-center text-slate-400 hover:text-brand-500 hover:border-brand-500 transition-colors"
+              className="w-10 h-10 rounded-xl border border-dashed border-slate-300 dark:border-dark-border flex items-center justify-center text-slate-400 hover:text-brand-500 hover:border-brand-500 transition-colors bg-slate-50 dark:bg-dark-surface"
               title="Upload your own photo"
             >
               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}

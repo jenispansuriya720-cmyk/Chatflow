@@ -4,6 +4,62 @@
 
 :root {
   color-scheme: light dark;
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --app-height: 100dvh;
+}
+
+html, body {
+  overflow-x: hidden;
+  max-width: 100vw;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Safe-area insets utilities */
+.pt-safe {
+  padding-top: max(1rem, var(--sat));
+}
+.pb-safe {
+  padding-bottom: max(1rem, var(--sab));
+}
+.pb-safe-nav {
+  padding-bottom: calc(4.25rem + var(--sab));
+}
+.pt-safe-nav {
+  padding-top: calc(3.5rem + var(--sat));
+}
+.h-dvh {
+  height: 100dvh;
+}
+.min-h-dvh {
+  min-height: 100dvh;
+}
+
+/* Minimum accessible touch target (44x44px per Requirement 19) */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Bottom Sheet mobile animations */
+@keyframes slideUpMobile {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.animate-sheet-up {
+  animation: slideUpMobile 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* Custom scrollbars */
@@ -160,6 +216,228 @@
   flex-shrink: 0;
 }
 
+/* =========================================================
+   STORY PANEL & AVATAR FIT ARCHITECTURE
+   ========================================================= */
+
+.story-panel {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.story-list {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 4px 2px;
+}
+
+.story-list::-webkit-scrollbar {
+  display: none;
+}
+
+.story-item {
+  width: 76px;
+  min-width: 76px;
+  max-width: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.story-avatar-wrapper {
+  position: relative;
+  width: clamp(62px, 17vw, 72px);
+  height: clamp(62px, 17vw, 72px);
+  min-width: clamp(62px, 17vw, 72px);
+  min-height: clamp(62px, 17vw, 72px);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.story-item:hover .story-avatar-wrapper {
+  transform: scale(1.04);
+}
+
+.story-item:active .story-avatar-wrapper {
+  transform: scale(0.97);
+}
+
+/* Story Ring States */
+.story-ring-unviewed {
+  background: linear-gradient(45deg, #f59e0b, #f43f5e, #9333ea);
+  box-shadow: 0 4px 12px rgba(244, 63, 94, 0.25);
+}
+
+.story-ring-viewed {
+  background: #cbd5e1;
+}
+
+.dark .story-ring-viewed {
+  background: #334155;
+}
+
+.story-ring-none {
+  border: 2px dashed #cbd5e1;
+  background: transparent;
+}
+
+.dark .story-ring-none {
+  border-color: #475569;
+}
+
+/* Inner white/dark border gap separating the ring from avatar image */
+.story-avatar-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  background-color: #ffffff;
+  padding: 2.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.dark .story-avatar-inner {
+  background-color: #0f172a;
+}
+
+/* True circular avatar container */
+.story-avatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f1f5f9;
+}
+
+.dark .story-avatar {
+  background-color: #1e293b;
+}
+
+/* The actual image must fill the avatar completely while preserving proportions */
+.story-avatar img,
+.story-avatar-inner img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 50%;
+  aspect-ratio: 1 / 1;
+}
+
+/* Gradient fallback when avatar image is absent or broken */
+.story-avatar-fallback {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.125rem;
+  color: #ffffff;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed, #ec4899);
+  user-select: none;
+}
+
+/* Plus button for Your Story */
+.story-add-button {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  border: 2px solid #ffffff;
+  background-color: #4f46e5;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.dark .story-add-button {
+  border-color: #0f172a;
+}
+
+.story-add-button:hover {
+  background-color: #4338ca;
+  transform: scale(1.1);
+}
+
+.story-add-button:active {
+  transform: scale(0.92);
+}
+
+@media (max-width: 639px) {
+  .story-add-button {
+    width: 20px;
+    height: 20px;
+    right: -1px;
+    bottom: -1px;
+  }
+}
+
+.story-name {
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  width: 100%;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.story-skeleton {
+  width: clamp(62px, 17vw, 72px);
+  height: clamp(62px, 17vw, 72px);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  background: #f1f5f9;
+}
+
+.dark .story-skeleton {
+  background: #1e293b;
+}
+
 /* ============================================================
    PERSONAL CHAT THEME SYSTEM
    Scoped CSS variables and adaptive bubble styles
@@ -270,9 +548,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-theme-scope * {
+  *, ::before, ::after {
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
   }
 }
 

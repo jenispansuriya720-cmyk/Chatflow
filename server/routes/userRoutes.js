@@ -17,6 +17,9 @@ const {
   updateSafetyControls,
   exportUserData,
   getCreatorAnalytics,
+  deleteProfilePicture,
+  updateCoverImage,
+  deleteCoverImage,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
@@ -36,6 +39,9 @@ router.get('/sessions', getActiveSessions);
 router.delete('/sessions', logoutAllSessions);
 router.delete('/account', deleteAccount);
 router.put('/profile', updateProfile);
+router.delete('/profile-picture', deleteProfilePicture);
+router.put('/cover', updateCoverImage);
+router.delete('/cover', deleteCoverImage);
 router.put('/change-password', changePassword);
 router.get('/:id', getUserById);
 router.post('/:id/follow', toggleFollow);

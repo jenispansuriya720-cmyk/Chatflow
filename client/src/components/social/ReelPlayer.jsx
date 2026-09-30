@@ -10,19 +10,29 @@ import {
   Play,
   UserPlus,
   Check,
+  MoreVertical,
+  Trash2,
+  Link2,
+  ShieldAlert,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../common/Toast';
 import Avatar from '../common/Avatar';
+import DeleteConfirmModal from '../modals/DeleteConfirmModal';
+import ReportModal from '../modals/ReportModal';
 import api from '../../services/api';
 
 const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
   const { user } = useAuth();
+  const { socket } = useSocket();
   const { addToast } = useToast();
   const navigate = useNavigate();
 
   const videoRef = useRef(null);
+  const optionsRef = useRef(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isLiked, setIsLiked] = useState(reel.isLiked || false);
@@ -30,15 +40,78 @@ const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
   const [isSaved, setIsSaved] = useState(reel.isSaved || false);
   const [isFollowing, setIsFollowing] = useState(false);
 
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [isUnavailable, setIsUnavailable] = useState(false);
+  const [isDeleted, setIsDeleted] = useState(false);
+
+  const isOwnReel = Boolean(
+    user?._id && reel.author?._id && reel.author._id.toString() === user._id.toString()
+  );
+
+  // Close options on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (optionsRef.current && !optionsRef.current.contains(e.target)) {
+        setOptionsOpen(false);
+      }
+    };
+    if (optionsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [optionsOpen]);
+
+  // Real-time reel deletion listener (Requirement 15 & 28)
+  useEffect(() => {
+    if (!socket) return;
+    const handleReelDeleted = ({ reelId }) => {
+      if (reelId === reel._id) {
+        setIsUnavailable(true);
+      }
+    };
+    socket.on('reel:deleted', handleReelDeleted);
+    return () => socket.off('reel:deleted', handleReelDeleted);
+  }, [socket, reel._id]);
+
+  // Auto-pause when reel leaves viewport (IntersectionObserver)
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio >= 0.6) {
+            videoEl.play().then(() => setIsPlaying(true)).catch(() => {});
+          } else {
+            videoEl.pause();
+            setIsPlaying(false);
+          }
+        });
+      },
+      { threshold: [0, 0.6, 1.0] }
+    );
+
+    observer.observe(videoEl);
+    return () => observer.disconnect();
+  }, []);
+
   // Toggle play/pause on video click
   const togglePlay = () => {
     if (!videoRef.current) return;
     if (videoRef.current.paused) {
-      videoRef.current.play();
-      setIsPlaying(true);
+      videoElPlay();
     } else {
       videoRef.current.pause();
       setIsPlaying(false);
+    }
+  };
+
+  const videoElPlay = () => {
+    if (videoRef.current) {
+      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   };
 
@@ -100,8 +173,35 @@ const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
     }
   };
 
+  const handleCopyLink = (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(`${window.location.origin}/reel/${reel._id}`);
+    addToast('Reel link copied to clipboard!', 'success');
+    setOptionsOpen(false);
+  };
+
+  const handleDeleteReel = async () => {
+    try {
+      const res = await api.delete(`/reels/${reel._id}`);
+      if (res.data.success) {
+        addToast('Reel deleted successfully', 'success');
+        setIsDeleted(true);
+      }
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete reel', 'error');
+    }
+  };
+
+  if (isUnavailable || isDeleted) {
+    return (
+      <div className="relative w-full max-w-sm h-[calc(100dvh-130px)] sm:h-[82vh] max-h-[760px] mx-auto rounded-3xl overflow-hidden bg-slate-950 border border-slate-800 flex items-center justify-center p-6 text-center text-slate-400 text-xs italic select-none">
+        This reel is no longer available.
+      </div>
+    );
+  }
+
   return (
-    <div className="relative w-full max-w-sm h-[82vh] max-h-[760px] mx-auto rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-800 flex items-center justify-center select-none group">
+    <div className="relative w-full max-w-sm h-[calc(100dvh-130px)] sm:h-[82vh] max-h-[760px] mx-auto rounded-3xl overflow-hidden bg-black shadow-2xl border border-slate-800 flex items-center justify-center select-none group">
       {/* Video Element */}
       <video
         ref={videoRef}
@@ -125,13 +225,90 @@ const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
         </div>
       )}
 
-      {/* Mute/Unmute Icon top right */}
-      <button
-        onClick={toggleMute}
-        className="absolute top-4 right-4 p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors z-20"
-      >
-        {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-      </button>
+      {/* Top Controls: Mute & More Options */}
+      <div className="absolute top-4 right-4 z-20 flex items-center space-x-2" ref={optionsRef}>
+        <div className="relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setOptionsOpen(!optionsOpen);
+            }}
+            className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+            title="Reel options"
+          >
+            <MoreVertical className="w-4 h-4" />
+          </button>
+
+          {optionsOpen && (
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="absolute right-0 top-10 w-44 bg-slate-900/95 backdrop-blur-md border border-slate-700 rounded-2xl shadow-xl z-30 py-1.5 text-xs text-white animate-fade-in"
+            >
+              <button
+                onClick={handleCopyLink}
+                className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-white/10 text-left transition-colors"
+              >
+                <Link2 className="w-4 h-4 text-slate-400" />
+                <span>Copy link</span>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setOptionsOpen(false);
+                  if (onOpenShare) onOpenShare(reel);
+                }}
+                className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-white/10 text-left transition-colors"
+              >
+                <Share2 className="w-4 h-4 text-slate-400" />
+                <span>Share reel</span>
+              </button>
+
+              {/* REEL OWNER ACTIONS (Requirement 15 & 30) */}
+              {isOwnReel ? (
+                <>
+                  <div className="my-1 border-t border-slate-700" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOptionsOpen(false);
+                      setDeleteModalOpen(true);
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-rose-950/40 text-rose-400 text-left transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    <span>Delete reel</span>
+                  </button>
+                </>
+              ) : (
+                /* OTHER USERS ONLY (Requirement 15 & 30) */
+                <>
+                  <div className="my-1 border-t border-slate-700" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOptionsOpen(false);
+                      setReportModalOpen(true);
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-rose-950/40 text-rose-400 text-left transition-colors"
+                  >
+                    <ShieldAlert className="w-4 h-4 text-rose-500" />
+                    <span>Report reel</span>
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Mute/Unmute */}
+        <button
+          onClick={toggleMute}
+          className="p-2 rounded-full bg-black/40 text-white hover:bg-black/60 transition-colors"
+        >
+          {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+        </button>
+      </div>
 
       {/* Right Engagement Rail */}
       <div className="absolute right-3 bottom-20 z-20 flex flex-col items-center space-y-4 text-white">
@@ -249,6 +426,25 @@ const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
           </span>
         </div>
       </div>
+
+      {/* Modals */}
+      <DeleteConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleDeleteReel}
+        title="Delete reel?"
+        description="This action will remove the reel from ChatFlow."
+        confirmLabel="Delete"
+        isOwn={isOwnReel}
+      />
+
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        targetType="reel"
+        targetId={reel._id}
+        targetUser={reel.author}
+      />
     </div>
   );
 };

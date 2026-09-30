@@ -94,10 +94,26 @@ const initializeSocket = (io) => {
       await registerUserSession(targetUserId);
     });
 
-    // Join conversation room
-    socket.on('joinConversation', (conversationId) => {
-      if (!conversationId) return;
-      socket.join(`conversation:${conversationId}`);
+    // Join conversation room (strictly check participant authorization)
+    socket.on('joinConversation', async (conversationId) => {
+      try {
+        if (!conversationId) return;
+        const uid = currentUserId || socket.user?._id;
+        if (!uid) return;
+
+        const conv = await Conversation.findOne({
+          _id: conversationId,
+          participants: { $in: [uid] },
+        });
+
+        if (conv) {
+          socket.join(`conversation:${conversationId}`);
+        } else {
+          console.warn(`[Socket Security] Rejecting joinConversation to room conversation:${conversationId} for unauthorized user: ${uid}`);
+        }
+      } catch (err) {
+        console.error('[Socket] joinConversation error:', err.message);
+      }
     });
 
     // Leave conversation room
@@ -109,7 +125,7 @@ const initializeSocket = (io) => {
     // --- REAL-TIME MESSAGING EVENTS ---
 
     // Send message via socket
-    socket.on('sendMessage', async (messageData) => {
+    const handleSendMessage = async (messageData) => {
       try {
         if (!messageData || !messageData.conversation) return;
         const senderId = currentUserId || socket.user?._id?.toString();
@@ -141,7 +157,10 @@ const initializeSocket = (io) => {
       } catch (err) {
         console.error('[Socket] sendMessage error:', err.message);
       }
-    });
+    };
+
+    socket.on('sendMessage', handleSendMessage);
+    socket.on('message:send', handleSendMessage);
 
     // Message Delivered Acknowledgment from Recipient
     socket.on('message:delivered', async ({ conversationId, messageIds, senderId }) => {
@@ -183,7 +202,7 @@ const initializeSocket = (io) => {
     });
 
     // Message Read Receipt
-    socket.on('messageRead', async ({ conversationId, userId, messageIds }) => {
+    const handleMessageRead = async ({ conversationId, userId, messageIds }) => {
       try {
         const readerId = currentUserId || userId || socket.user?._id;
         if (!conversationId || !readerId) return;
@@ -217,10 +236,13 @@ const initializeSocket = (io) => {
       } catch (err) {
         console.error('[Socket] messageRead error:', err.message);
       }
-    });
+    };
+
+    socket.on('messageRead', handleMessageRead);
+    socket.on('message:read', handleMessageRead);
 
     // Typing Indicators (debounced by client)
-    socket.on('typing', ({ conversationId, userId, username }) => {
+    const handleTypingStart = ({ conversationId, userId, username }) => {
       if (!conversationId) return;
       socket.to(`conversation:${conversationId}`).emit('userTyping', {
         conversationId,
@@ -232,9 +254,9 @@ const initializeSocket = (io) => {
         userId: currentUserId || userId,
         username,
       });
-    });
+    };
 
-    socket.on('stopTyping', ({ conversationId, userId }) => {
+    const handleTypingStop = ({ conversationId, userId }) => {
       if (!conversationId) return;
       socket.to(`conversation:${conversationId}`).emit('userStoppedTyping', {
         conversationId,
@@ -244,7 +266,12 @@ const initializeSocket = (io) => {
         conversationId,
         userId: currentUserId || userId,
       });
-    });
+    };
+
+    socket.on('typing', handleTypingStart);
+    socket.on('typing:start', handleTypingStart);
+    socket.on('stopTyping', handleTypingStop);
+    socket.on('typing:stop', handleTypingStop);
 
     // Reactions, edits, deletes
     socket.on('messageReaction', ({ conversationId, messageId, reactions }) => {
@@ -283,6 +310,18 @@ const initializeSocket = (io) => {
         messageId,
         deleteType,
       });
+    });
+
+    socket.on('post:delete', ({ postId }) => {
+      io.emit('post:deleted', { postId });
+    });
+
+    socket.on('reel:delete', ({ reelId }) => {
+      io.emit('reel:deleted', { reelId });
+    });
+
+    socket.on('story:delete', ({ storyId, authorId }) => {
+      io.emit('story:deleted', { storyId, authorId });
     });
 
     // --- REAL-TIME WEBRTC CALLING EVENTS (VOICE & VIDEO) ---

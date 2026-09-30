@@ -21,11 +21,21 @@ export const SocketProvider = ({ children }) => {
     }
 
     // Connect to Socket.IO with token in handshake auth
-    const newSocket = io(window.location.origin, {
+    const socketEndpoint =
+      import.meta.env.VITE_SOCKET_URL ||
+      import.meta.env.VITE_API_URL ||
+      (typeof window !== 'undefined' ? window.location.origin : '');
+
+    const newSocket = io(socketEndpoint, {
       auth: { token },
       transports: ['websocket', 'polling'],
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
+      timeout: 10000,
+    });
+
+    newSocket.on('connect_error', (err) => {
+      console.warn('[ChatFlow Socket] Connection notice:', err.message);
     });
 
     newSocket.on('connect', () => {

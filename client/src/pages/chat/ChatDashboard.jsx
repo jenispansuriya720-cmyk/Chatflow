@@ -102,9 +102,12 @@ const ChatDashboard = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-white dark:bg-dark-base text-slate-900 dark:text-slate-100">
       {/* Primary Sidebar (Desktop/Tablet left bar, Mobile bottom bar) */}
-      <Sidebar />
+      <Sidebar
+        hideMobileNav={Boolean(activeConversation)}
+        hideMobileHeader={Boolean(activeConversation)}
+      />
 
       {/* Responsive Chat Interface */}
       <div className="flex-1 flex h-full overflow-hidden relative">

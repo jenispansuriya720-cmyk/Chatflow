@@ -68,7 +68,7 @@ chatflow/
 │   │   │   └── modals/         # MediaPreviewModal, ForwardModal, ConversationInfoDrawer
 │   │   ├── context/            # AuthContext, SocketContext, ChatContext, ThemeContext
 │   │   ├── pages/
-│   │   │   ├── auth/           # LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage
+│   │   │   ├── auth/           # LoginPage, RegisterPage, WelcomePage, OnboardingPage
 │   │   │   ├── chat/           # ChatDashboard
 │   │   │   ├── contacts/       # ContactsPage
 │   │   │   ├── groups/         # CreateGroupPage
@@ -168,7 +168,63 @@ Visit **http://localhost:5173** in your web browser.
 
 ---
 
-## 7. Automated Backend Tests
+## 7. Deploying to Vercel & Cloud Hosting
+
+ChatFlow is configured for instant deployment on **Vercel** with full-stack serverless routing and **MongoDB Atlas** persistence.
+
+### Option 1: Full-Stack Deployment on Vercel (Monorepo)
+
+1. **Push your repository to GitHub**:
+   ```bash
+   git add .
+   git commit -m "feat: vercel deployment configuration and optimizations"
+   git push origin main
+   ```
+
+2. **Set up MongoDB Atlas (Free Database)**:
+   - Create a free cluster at [mongodb.com/atlas](https://www.mongodb.com/atlas).
+   - Under **Database Access**, create a database user and password.
+   - Under **Network Access**, add `0.0.0.0/0` (Allow access from anywhere).
+   - Click **Connect** → **Drivers** and copy your connection string:
+     ```text
+     mongodb+srv://<username>:<password>@cluster0.mongodb.net/chatflow?retryWrites=true&w=majority
+     ```
+
+3. **Deploy on Vercel**:
+   - Go to [vercel.com/new](https://vercel.com/new) and import your `Chatflow` GitHub repository.
+   - Vercel automatically detects the configuration from [vercel.json](file:///c:/Users/DELL/.gemini/antigravity-ide/scratch/chatflow/vercel.json):
+     - **Build Command**: `npm run build --prefix client`
+     - **Output Directory**: `client/dist`
+   - In **Environment Variables**, add:
+     - `MONGO_URI`: Your MongoDB Atlas connection string.
+     - `JWT_SECRET`: A secure random secret string.
+     - `NODE_ENV`: `production`
+     - `CLIENT_URL`: `https://<your-project-name>.vercel.app`
+   - Click **Deploy**!
+
+---
+
+### Option 2: Frontend on Vercel + Backend on Render/Railway (Full Persistent WebSockets)
+
+For high-throughput, persistent real-time Socket.IO WebSockets and live audio/video streaming, you can run the Node.js backend on Render or Railway and the frontend on Vercel:
+
+1. **Deploy Backend to Render or Railway**:
+   - Connect repository, set Root Directory to `server`.
+   - Build Command: `npm install`
+   - Start Command: `node server.js`
+   - Add environment variables: `MONGO_URI`, `JWT_SECRET`, `CLIENT_URL`.
+   - Copy your live backend URL (e.g., `https://chatflow-backend.onrender.com`).
+
+2. **Deploy Frontend to Vercel**:
+   - Connect repository, set Root Directory to `client` (or use root with `vercel.json`).
+   - Add Environment Variables:
+     - `VITE_API_URL`: `https://chatflow-backend.onrender.com`
+     - `VITE_SOCKET_URL`: `https://chatflow-backend.onrender.com`
+   - Deploy!
+
+---
+
+## 8. Automated Backend Tests
 
 To run the automated test suite verifying User Authentication, Password Encryption, Conversations, Messages, Reactions, and User Blocking:
 
@@ -179,15 +235,15 @@ npm test
 
 ---
 
-## 8. API Reference
+## 9. API Reference
 
 ### Authentication
-- `POST /api/auth/register` — Register a new account
+- `POST /api/auth/register` — Register a new account (direct session creation)
 - `POST /api/auth/login` — Sign in with email/username and password
 - `POST /api/auth/logout` — Invalidate user session
 - `GET  /api/auth/me` — Fetch currently authenticated user
-- `POST /api/auth/forgot-password` — Generate password reset token
-- `POST /api/auth/reset-password` — Reset password using token
+- `POST /api/auth/change-password` — Change password for authenticated user
+- `POST /api/auth/delete-account` — Permanently delete account with password confirmation
 
 ### Conversations
 - `GET  /api/conversations` — Get user's conversation list with unread counts
@@ -216,7 +272,7 @@ npm test
 
 ---
 
-## 9. Real-Time Socket.IO Events
+## 10. Real-Time Socket.IO Events
 
 | Event Name | Direction | Description |
 | :--- | :--- | :--- |
@@ -236,5 +292,5 @@ npm test
 
 ---
 
-## 10. License
+## 11. License
 MIT License. Built for production-ready real-time communication.

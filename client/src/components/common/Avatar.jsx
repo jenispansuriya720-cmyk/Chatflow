@@ -84,8 +84,8 @@ const Avatar = ({
       status: 'w-6 h-6 border-[3px]',
     },
     story: {
-      container: 'w-14 h-14 min-w-[56px] min-h-[56px] max-w-[56px] max-h-[56px]',
-      text: 'text-lg font-bold',
+      container: 'w-full h-full min-w-full min-h-full aspect-square',
+      text: 'text-base font-bold',
       status: 'w-3.5 h-3.5 border-[2px]',
     },
     live: {
@@ -113,7 +113,7 @@ const Avatar = ({
   const optimizedSrc = useMemo(() => {
     if (!src || typeof src !== 'string') return null;
     if (src.includes('res.cloudinary.com') && src.includes('/upload/')) {
-      const dimension = size === 'call' ? 320 : size === 'profile' ? 240 : size === '2xl' ? 192 : 96;
+      const dimension = size === 'call' ? 320 : size === 'profile' ? 240 : size === '2xl' ? 192 : size === 'story' ? 160 : 96;
       return src.replace('/upload/', `/upload/c_fill,g_face,w_${dimension},h_${dimension},q_auto,f_auto/`);
     }
     return src;
@@ -125,7 +125,9 @@ const Avatar = ({
 
     return (
       <div
-        className={`avatar ${currentSize.container} bg-slate-100 dark:bg-slate-800 ring-1 ring-black/5 dark:ring-white/10`}
+        className={`avatar ${currentSize.container} bg-slate-100 dark:bg-slate-800 ${
+          size === 'story' ? '' : 'ring-1 ring-black/5 dark:ring-white/10'
+        }`}
       >
         {hasImage ? (
           <img
@@ -167,8 +169,8 @@ const Avatar = ({
     );
   };
 
-  // Story Tray Wrapper (Outer Ring Separation)
-  if (size === 'story' || storyRing) {
+  // Story Tray Wrapper (Outer Ring Separation when storyRing prop is passed explicitly)
+  if (storyRing) {
     return (
       <div
         onClick={onClick}
@@ -215,10 +217,13 @@ const Avatar = ({
   }
 
   // Standard Avatar container
+  const isStory = size === 'story';
   return (
     <div
       onClick={onClick}
-      className={`relative inline-flex items-center justify-center flex-shrink-0 select-none ${
+      className={`relative ${
+        isStory ? 'w-full h-full flex' : 'inline-flex'
+      } items-center justify-center flex-shrink-0 select-none ${
         onClick ? 'cursor-pointer' : ''
       } ${className}`}
     >

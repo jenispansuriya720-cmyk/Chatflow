@@ -192,9 +192,7 @@ const ExplorePage = () => {
         type: 'post',
         id: p._id,
         item: p,
-        mediaUrl:
-          p.media?.[0]?.url ||
-          'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80',
+        mediaUrl: p.media?.[0]?.url || '',
         caption: p.content,
         author: p.author,
         likesCount: p.likesCount || p.likes?.length || 0,
@@ -208,9 +206,7 @@ const ExplorePage = () => {
         type: 'reel',
         id: r._id,
         item: r,
-        mediaUrl:
-          r.thumbnail ||
-          'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=600&auto=format&fit=crop&q=80',
+        mediaUrl: r.thumbnail || '',
         caption: r.caption,
         author: r.author,
         likesCount: r.likesCount || r.likes?.length || 0,
@@ -221,12 +217,12 @@ const ExplorePage = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
       <main className="flex-1 flex overflow-hidden">
         {/* Center Discovery Area */}
-        <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-4 pb-24 md:pb-8">
+        <div className="flex-1 overflow-y-auto px-3 sm:px-6 pt-16 md:pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
           <div className="max-w-5xl mx-auto space-y-6">
             {/* Header & Search Bar */}
             <div className="space-y-4">
@@ -543,11 +539,26 @@ const ExplorePage = () => {
                         gridItem.type === 'reel' ? 'ring-1 ring-purple-500/30' : ''
                       }`}
                     >
-                      <img
-                        src={gridItem.mediaUrl}
-                        alt={gridItem.caption || 'Explore item'}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
+                      {gridItem.mediaUrl ? (
+                        <img
+                          src={gridItem.mediaUrl}
+                          alt={gridItem.caption || 'Explore item'}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className={`w-full h-full p-4 flex flex-col justify-between text-slate-200 ${
+                          gridItem.type === 'reel'
+                            ? 'bg-gradient-to-b from-purple-950/70 via-slate-900 to-black'
+                            : 'bg-gradient-to-br from-slate-800 to-slate-900'
+                        }`}>
+                          <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-brand-400">
+                            {gridItem.type === 'reel' ? <Film className="w-4 h-4 text-purple-400" /> : <MessageSquare className="w-4 h-4 text-brand-400" />}
+                          </div>
+                          <p className="text-xs font-semibold line-clamp-4 leading-relaxed text-slate-200">
+                            {gridItem.caption || (gridItem.type === 'reel' ? 'Reel clip' : 'ChatFlow post')}
+                          </p>
+                        </div>
+                      )}
 
                       {/* Reel badge indicator */}
                       {gridItem.type === 'reel' && (

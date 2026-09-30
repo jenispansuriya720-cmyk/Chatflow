@@ -1,6 +1,13 @@
-const User = require('../models/User');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
+const User = require('../models/User');
+const Post = require('../models/Post');
+const Story = require('../models/Story');
+const Reel = require('../models/Reel');
+const Comment = require('../models/Comment');
+const Follow = require('../models/Follow');
+const Notification = require('../models/Notification');
+const AuditLog = require('../models/AuditLog');
+const { cleanupMedia } = require('../utils/mediaCleanup');
 
 // Helper to generate JWT token
 const generateToken = (id) => {
@@ -9,9 +16,11 @@ const generateToken = (id) => {
   });
 };
 
-// @desc    Register a new user
-// @route   POST /api/auth/register
-// @access  Public
+/**
+ * @desc    Register a new user
+ * @route   POST /api/auth/register
+ * @access  Public
+ */
 const register = async (req, res, next) => {
   try {
     const { fullName, username, email, phone, password, confirmPassword, profilePicture } = req.body;
@@ -37,25 +46,28 @@ const register = async (req, res, next) => {
       });
     }
 
+    const cleanEmail = email.toLowerCase().trim();
+    const cleanUsername = username.toLowerCase().trim();
+
     // Check if user already exists
     const existingUser = await User.findOne({
-      $or: [{ email: email.toLowerCase() }, { username: username.toLowerCase() }],
+      $or: [{ email: cleanEmail }, { username: cleanUsername }],
     });
 
     if (existingUser) {
-      if (existingUser.email === email.toLowerCase()) {
+      if (existingUser.email === cleanEmail) {
         return res.status(400).json({ success: false, message: 'Email is already registered.' });
       }
       return res.status(400).json({ success: false, message: 'Username is already taken.' });
     }
 
     // Default avatar if none provided
-    const avatarUrl = profilePicture || `https://api.dicebear.com/7.x/bottts/svg?seed=${username}`;
+    const avatarUrl = profilePicture || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`;
 
     const user = await User.create({
-      fullName,
-      username: username.toLowerCase().trim(),
-      email: email.toLowerCase().trim(),
+      fullName: fullName.trim(),
+      username: cleanUsername,
+      email: cleanEmail,
       phone: phone || '',
       password,
       profilePicture: avatarUrl,
@@ -64,12 +76,11 @@ const register = async (req, res, next) => {
     });
 
     const token = generateToken(user._id);
-
     const userResponse = await User.findById(user._id).select('-password');
 
     res.status(201).json({
       success: true,
-      message: 'Registration successful.',
+      message: 'Account registered successfully.',
       token,
       user: userResponse,
     });
@@ -78,23 +89,25 @@ const register = async (req, res, next) => {
   }
 };
 
-// @desc    Login user
-// @route   POST /api/auth/login
-// @access  Public
+/**
+ * @desc    Login user
+ * @route   POST /api/auth/login
+ * @access  Public
+ */
 const login = async (req, res, next) => {
   try {
-    const { loginId, password } = req.body; // loginId can be email or username
+    const loginIdentifier = req.body.loginId || req.body.email || req.body.username || req.body.login;
+    const { password } = req.body;
 
-    if (!loginId || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         success: false,
         message: 'Please enter your email/username and password.',
       });
     }
 
-    const cleanLoginId = loginId.toLowerCase().trim();
+    const cleanLoginId = loginIdentifier.toLowerCase().trim();
 
-    // Query user by email or username, explicitly selecting password
     const user = await User.findOne({
       $or: [{ email: cleanLoginId }, { username: cleanLoginId }],
     }).select('+password');
@@ -114,24 +127,45 @@ const login = async (req, res, next) => {
       });
     }
 
-    user.isOnline = true;
-    user.lastSeen = new Date();
-
     const userAgent = req.headers['user-agent'] || 'Unknown Browser';
     const isMobile = /mobile/i.test(userAgent);
     const ip = req.ip || req.connection?.remoteAddress || '127.0.0.1';
 
+    const currentDevice = isMobile ? 'Mobile Device' : 'Desktop / Laptop';
+    const currentBrowser = userAgent.includes('Chrome')
+      ? 'Chrome'
+      : userAgent.includes('Firefox')
+      ? 'Firefox'
+      : userAgent.includes('Safari')
+      ? 'Safari'
+      : 'Web Browser';
+    const currentOs = userAgent.includes('Windows')
+      ? 'Windows'
+      : userAgent.includes('Mac')
+      ? 'macOS'
+      : userAgent.includes('Android')
+      ? 'Android'
+      : userAgent.includes('iPhone')
+      ? 'iOS'
+      : 'Linux';
+
+    user.isOnline = true;
+    user.lastSeen = new Date();
+
     const newSession = {
       sessionId: 'sess-' + Date.now() + '-' + Math.random().toString(36).substr(2, 6),
-      device: isMobile ? 'Mobile Device' : 'Desktop / Laptop',
-      browser: userAgent.includes('Chrome') ? 'Chrome' : userAgent.includes('Firefox') ? 'Firefox' : userAgent.includes('Safari') ? 'Safari' : 'Browser',
-      os: userAgent.includes('Windows') ? 'Windows' : userAgent.includes('Mac') ? 'macOS' : userAgent.includes('Android') ? 'Android' : userAgent.includes('iPhone') ? 'iOS' : 'Linux',
+      device: currentDevice,
+      browser: currentBrowser,
+      os: currentOs,
       ip,
       location: 'Local Session',
+      loggedInAt: new Date(),
       lastActive: new Date(),
     };
 
-    if (!user.sessions) user.sessions = [];
+    if (!user.sessions) {
+      user.sessions = [];
+    }
     user.sessions.unshift(newSession);
     if (user.sessions.length > 5) user.sessions = user.sessions.slice(0, 5);
 
@@ -151,9 +185,162 @@ const login = async (req, res, next) => {
   }
 };
 
-// @desc    Logout user
-// @route   POST /api/auth/logout
-// @access  Private
+/**
+ * @desc    Change password for authenticated user
+ * @route   POST /api/auth/change-password
+ * @access  Private
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    const currentUserId = req.user._id;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required.',
+      });
+    }
+
+    if (confirmPassword && newPassword !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New passwords do not match.',
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 6 characters.',
+      });
+    }
+
+    const user = await User.findById(currentUserId).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const isMatch = await user.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password is incorrect.',
+      });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from your current password.',
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: 'Password changed successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Permanently delete account with password verification
+ * @route   POST /api/auth/delete-account
+ * @access  Private
+ */
+const deleteAccount = async (req, res, next) => {
+  try {
+    const { password } = req.body;
+    const userId = req.user._id;
+
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Your current password is required to delete your account.',
+      });
+    }
+
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Incorrect password. Deletion request rejected.',
+      });
+    }
+
+    const userEmail = user.email;
+    const userName = user.fullName;
+
+    // 1. Clean up user posts and their media
+    const userPosts = await Post.find({ author: userId });
+    for (const p of userPosts) {
+      if (p.media && p.media.length > 0) {
+        for (const m of p.media) {
+          if (m.url) await cleanupMedia(m.url, userId).catch(() => {});
+        }
+      }
+    }
+    await Post.deleteMany({ author: userId });
+
+    // 2. Clean up user stories and media
+    const userStories = await Story.find({ author: userId });
+    for (const s of userStories) {
+      if (s.media) await cleanupMedia(s.media, userId).catch(() => {});
+    }
+    await Story.deleteMany({ author: userId });
+
+    // 3. Clean up user reels and media
+    const userReels = await Reel.find({ author: userId });
+    for (const r of userReels) {
+      if (r.videoUrl) await cleanupMedia(r.videoUrl, userId).catch(() => {});
+    }
+    await Reel.deleteMany({ author: userId });
+
+    // 4. Clean up comments, follows, notifications
+    await Comment.deleteMany({ author: userId });
+    await Follow.deleteMany({ $or: [{ follower: userId }, { following: userId }] });
+    await Notification.deleteMany({ $or: [{ user: userId }, { sender: userId }] });
+
+    // 5. Clean up profile media
+    if (user.profilePicture) await cleanupMedia(user.profilePicture, userId).catch(() => {});
+    if (user.coverImage) await cleanupMedia(user.coverImage, userId).catch(() => {});
+
+    // 6. Record audit log
+    await AuditLog.create({
+      userId,
+      contentType: 'user',
+      contentId: userId,
+      action: 'delete_account',
+      details: { email: userEmail, username: user.username },
+    }).catch(() => {});
+
+    // 7. Delete the user document permanently
+    await User.findByIdAndDelete(userId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Your ChatFlow account and personal data have been permanently deleted.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @desc    Logout user
+ * @route   POST /api/auth/logout
+ * @access  Private
+ */
 const logout = async (req, res, next) => {
   try {
     if (req.user) {
@@ -172,9 +359,11 @@ const logout = async (req, res, next) => {
   }
 };
 
-// @desc    Get current logged in user
-// @route   GET /api/auth/me
-// @access  Private
+/**
+ * @desc    Get current logged in user
+ * @route   GET /api/auth/me
+ * @access  Private
+ */
 const getMe = async (req, res, next) => {
   try {
     const user = await User.findById(req.user._id).select('-password');
@@ -187,96 +376,11 @@ const getMe = async (req, res, next) => {
   }
 };
 
-// @desc    Forgot password
-// @route   POST /api/auth/forgot-password
-// @access  Public
-const forgotPassword = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({ success: false, message: 'Please provide an email address.' });
-    }
-
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'No account found with this email.' });
-    }
-
-    // Generate reset token
-    const resetToken = crypto.randomBytes(20).toString('hex');
-
-    // Hash token and set to resetPasswordToken field
-    user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-    await user.save({ validateBeforeSave: false });
-
-    // In production, an email is sent. For direct usability, return resetToken in response
-    res.status(200).json({
-      success: true,
-      message: 'Password reset link generated.',
-      resetToken, // Provided for instant reset link navigation
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Reset password
-// @route   POST /api/auth/reset-password
-// @access  Public
-const resetPassword = async (req, res, next) => {
-  try {
-    const { token, newPassword, confirmPassword } = req.body;
-
-    if (!token || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Token and new password are required.',
-      });
-    }
-
-    if (confirmPassword && newPassword !== confirmPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Passwords do not match.',
-      });
-    }
-
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-
-    const user = await User.findOne({
-      resetPasswordToken: hashedToken,
-      resetPasswordExpires: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid or expired reset token.',
-      });
-    }
-
-    user.password = newPassword;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Password reset successfully. You can now login with your new password.',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = {
   register,
   login,
   logout,
   getMe,
-  forgotPassword,
-  resetPassword,
+  changePassword,
+  deleteAccount,
 };

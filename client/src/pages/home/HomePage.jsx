@@ -12,15 +12,19 @@ import SharePostModal from '../../components/social/SharePostModal';
 import CreateReelModal from '../../components/social/CreateReelModal';
 import Avatar from '../../components/common/Avatar';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { useToast } from '../../components/common/Toast';
 import api from '../../services/api';
 
 const HomePage = () => {
   const { user } = useAuth();
+  const { socket } = useSocket();
   const { addToast } = useToast();
   const navigate = useNavigate();
 
   const [storyGroups, setStoryGroups] = useState([]);
+  const [loadingStories, setLoadingStories] = useState(true);
+  const [storyError, setStoryError] = useState(null);
   const [posts, setPosts] = useState([]);
   const [suggestedUsers, setSuggestedUsers] = useState([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
@@ -38,14 +42,42 @@ const HomePage = () => {
     loadSuggestedUsers();
   }, []);
 
+  // Real-time story and post sync
+  useEffect(() => {
+    if (!socket) return;
+
+    const handlePostDeleted = ({ postId }) => {
+      setPosts((prev) => prev.filter((p) => p._id !== postId));
+    };
+
+    const handleStoryUpdate = () => {
+      loadStories();
+    };
+
+    socket.on('post:deleted', handlePostDeleted);
+    socket.on('story:deleted', handleStoryUpdate);
+    socket.on('story:created', handleStoryUpdate);
+
+    return () => {
+      socket.off('post:deleted', handlePostDeleted);
+      socket.off('story:deleted', handleStoryUpdate);
+      socket.off('story:created', handleStoryUpdate);
+    };
+  }, [socket]);
+
   const loadStories = async () => {
     try {
+      setLoadingStories(true);
+      setStoryError(null);
       const res = await api.get('/stories');
       if (res.data.success) {
-        setStoryGroups(res.data.storyGroups);
+        setStoryGroups(res.data.storyGroups || []);
       }
     } catch (err) {
       console.error('Failed to load stories:', err);
+      setStoryError('Failed to load stories');
+    } finally {
+      setLoadingStories(false);
     }
   };
 
@@ -87,7 +119,7 @@ const HomePage = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       {/* Unified Navigation Sidebar */}
       <Sidebar
         onOpenCreateStory={() => setCreateStoryOpen(true)}
@@ -97,7 +129,7 @@ const HomePage = () => {
       {/* Main Social Content Area */}
       <div className="flex-1 flex h-full overflow-hidden">
         {/* Central Feed Scroll Container */}
-        <main className="flex-1 h-full overflow-y-auto pt-16 md:pt-6 pb-20 md:pb-8 px-3 sm:px-6">
+        <main className="flex-1 h-full overflow-y-auto pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8 px-3 sm:px-6">
           <div className="max-w-xl mx-auto space-y-5">
             {/* Personalized Greeting Header (Section 94) */}
             <div className="flex items-center justify-between pb-1">
@@ -122,6 +154,9 @@ const HomePage = () => {
             {/* 1. Stories Tray */}
             <StoriesTray
               storyGroups={storyGroups}
+              loading={loadingStories}
+              error={storyError}
+              onRetry={loadStories}
               onSelectGroup={(group) => setSelectedStoryGroup(group)}
               onOpenCreateStory={() => setCreateStoryOpen(true)}
             />
@@ -306,7 +341,10 @@ const HomePage = () => {
       {selectedStoryGroup && (
         <StoryViewerModal
           storyGroup={selectedStoryGroup}
-          onClose={() => setSelectedStoryGroup(null)}
+          onClose={() => {
+            setSelectedStoryGroup(null);
+            loadStories();
+          }}
         />
       )}
 

@@ -69,5 +69,7 @@ const postSchema = new mongoose.Schema(
 
 postSchema.index({ hashtags: 1 });
 postSchema.index({ createdAt: -1 });
+postSchema.index({ author: 1, createdAt: -1 });
+postSchema.index({ visibility: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Post', postSchema);

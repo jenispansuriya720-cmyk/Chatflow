@@ -76,13 +76,21 @@ const LiveHubPage = () => {
                     onClick={() => navigate(`/live/${stream._id}`)}
                     className="group bg-white dark:bg-dark-surface border border-slate-200/80 dark:border-dark-border rounded-3xl overflow-hidden shadow-xs hover:shadow-xl transition-all cursor-pointer flex flex-col"
                   >
-                    {/* Simulated Live Broadcast Thumbnail */}
-                    <div className="relative aspect-video bg-slate-900 overflow-hidden">
-                      <img
-                        src="https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80"
-                        alt="Stream thumbnail"
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
+                    <div className="relative aspect-video bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950/80 overflow-hidden flex items-center justify-center">
+                      {stream.thumbnail ? (
+                        <img
+                          src={stream.thumbnail}
+                          alt={stream.title || 'Stream'}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center space-y-2 p-4 text-center">
+                          <div className="w-12 h-12 rounded-2xl bg-brand-500/20 border border-brand-500/30 flex items-center justify-center text-brand-400 group-hover:scale-110 transition-transform">
+                            <Radio className="w-6 h-6 animate-pulse" />
+                          </div>
+                          <span className="text-xs font-semibold text-slate-300 line-clamp-1">{stream.title}</span>
+                        </div>
+                      )}
 
                       {/* Red LIVE badge */}
                       <div className="absolute top-3 left-3 px-2.5 py-1 rounded-full bg-red-600 text-white text-[10px] font-extrabold uppercase tracking-wider shadow-md flex items-center space-x-1">

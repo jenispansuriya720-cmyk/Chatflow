@@ -81,14 +81,14 @@ const ChatList = ({ onSelectChat }) => {
           <div className="flex items-center space-x-1">
             <button
               onClick={() => navigate('/groups/create')}
-              className="p-2 rounded-xl text-slate-500 dark:text-dark-muted hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-dark-hover transition-colors"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-slate-500 dark:text-dark-muted hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-dark-hover transition-colors"
               title="Create New Group"
             >
               <UserPlus className="w-5 h-5" />
             </button>
             <button
               onClick={() => navigate('/contacts')}
-              className="p-2 rounded-xl text-white bg-brand-600 hover:bg-brand-700 shadow-sm transition-colors"
+              className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-white bg-brand-600 hover:bg-brand-700 shadow-sm transition-colors"
               title="Start New Chat"
             >
               <Plus className="w-5 h-5" />
@@ -122,7 +122,7 @@ const ChatList = ({ onSelectChat }) => {
             <button
               key={tab.id}
               onClick={() => setFilterTab(tab.id)}
-              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all ${
+              className={`px-3.5 py-1.5 min-h-[36px] flex items-center justify-center text-xs font-semibold rounded-lg transition-all ${
                 filterTab === tab.id
                   ? 'bg-brand-500/15 text-brand-600 dark:text-brand-400'
                   : 'text-slate-500 dark:text-dark-muted hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-dark-hover'
@@ -135,7 +135,7 @@ const ChatList = ({ onSelectChat }) => {
       </div>
 
       {/* Conversation List */}
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+      <div className="flex-1 overflow-y-auto px-2 py-2 pb-28 md:pb-2 space-y-1">
         {loadingConversations ? (
           <ChatSkeleton />
         ) : filteredConversations.length > 0 ? (

@@ -97,7 +97,15 @@ export const ChatProvider = ({ children }) => {
   );
 
   // Send a message with optimistic update and deduplication
-  const sendMessage = async ({ text, attachments = [], voiceData = null }) => {
+  const sendMessage = async ({
+    text,
+    attachments = [],
+    voiceData = null,
+    type = 'text',
+    sharedContent = null,
+    pollData = null,
+    eventData = null,
+  }) => {
     if (!activeConversation) return;
 
     const clientMessageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -121,6 +129,10 @@ export const ChatProvider = ({ children }) => {
       },
       receiver: otherParticipant?._id || otherParticipant,
       text: text || '',
+      type,
+      sharedContent,
+      pollData,
+      eventData,
       attachments: attachments || [],
       voiceData: voiceData || { duration: 0, waveform: [] },
       replyTo: replyingTo || null,
@@ -136,6 +148,10 @@ export const ChatProvider = ({ children }) => {
       const payload = {
         conversationId: activeConversation._id,
         text,
+        type,
+        sharedContent,
+        pollData,
+        eventData,
         attachments,
         voiceData,
         replyTo: previousReply ? previousReply._id : undefined,
@@ -344,7 +360,8 @@ export const ChatProvider = ({ children }) => {
 
     // Message deleted
     const handleMessageDeleted = ({ messageId, deleteType }) => {
-      if (deleteType === 'for_everyone') {
+      const isEveryone = deleteType === 'for_everyone' || deleteType === 'everyone';
+      if (isEveryone) {
         setMessages((prev) =>
           prev.map((m) =>
             m._id === messageId
@@ -354,6 +371,9 @@ export const ChatProvider = ({ children }) => {
                   isDeleted: true,
                   attachments: [],
                   voiceData: { duration: 0, waveform: [] },
+                  sharedContent: null,
+                  pollData: null,
+                  eventData: null,
                 }
               : m
           )
@@ -470,9 +490,11 @@ export const ChatProvider = ({ children }) => {
     try {
       const res = await api.delete(`/messages/${messageId}`, {
         data: { deleteType },
+        params: { deleteType },
       });
       if (res.data.success) {
-        if (deleteType === 'for_everyone') {
+        const isEveryone = deleteType === 'for_everyone' || deleteType === 'everyone';
+        if (isEveryone) {
           setMessages((prev) =>
             prev.map((m) =>
               m._id === messageId
@@ -482,6 +504,9 @@ export const ChatProvider = ({ children }) => {
                     isDeleted: true,
                     attachments: [],
                     voiceData: { duration: 0, waveform: [] },
+                    sharedContent: null,
+                    pollData: null,
+                    eventData: null,
                   }
                 : m
             )
@@ -492,6 +517,11 @@ export const ChatProvider = ({ children }) => {
 
         if (socket && activeConversation) {
           socket.emit('messageDeleted', {
+            conversationId: activeConversation._id,
+            messageId,
+            deleteType,
+          });
+          socket.emit('message:deleted', {
             conversationId: activeConversation._id,
             messageId,
             deleteType,

@@ -61,6 +61,13 @@ export const AuthProvider = ({ children }) => {
     return { success: false, message: res.data.message };
   };
 
+  const loginWithToken = (newToken, newUser) => {
+    setToken(newToken);
+    setUser(newUser);
+    localStorage.setItem('chatflow_token', newToken);
+    localStorage.setItem('chatflow_user', JSON.stringify(newUser));
+  };
+
   const logout = async () => {
     try {
       if (token) {
@@ -89,6 +96,7 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated: !!token && !!user,
         loading,
         login,
+        loginWithToken,
         register,
         logout,
         updateUser,

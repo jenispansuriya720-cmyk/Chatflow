@@ -23,8 +23,16 @@ import { useTheme } from '../../context/ThemeContext';
 import { useChat } from '../../context/ChatContext';
 import Avatar from '../common/Avatar';
 import CreateModal from '../modals/CreateModal';
+import MobileHeader from './MobileHeader';
+import MobileBottomNav from './MobileBottomNav';
 
-const Sidebar = ({ onOpenCreatePost, onOpenCreateStory, onOpenCreateReel }) => {
+const Sidebar = ({
+  onOpenCreatePost,
+  onOpenCreateStory,
+  onOpenCreateReel,
+  hideMobileHeader = false,
+  hideMobileNav = false,
+}) => {
   const { user, logout } = useAuth();
   const { theme, setTheme, isDark } = useTheme();
   const { conversations } = useChat();
@@ -197,117 +205,12 @@ const Sidebar = ({ onOpenCreatePost, onOpenCreateStory, onOpenCreateReel }) => {
       </aside>
 
       {/* Mobile Top Header */}
-      <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md border-b border-slate-200 dark:border-dark-border flex items-center justify-between px-4 z-40 select-none">
-        <div
-          onClick={() => navigate('/home')}
-          className="flex items-center space-x-2 cursor-pointer"
-        >
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-xs">
-            <Sparkles className="w-4 h-4" />
-          </div>
-          <span className="text-sm font-black tracking-tight bg-gradient-to-r from-brand-600 to-indigo-600 bg-clip-text text-transparent">
-            ChatFlow
-          </span>
-        </div>
+      {!hideMobileHeader && <MobileHeader />}
 
-        <div className="flex items-center space-x-2">
-          <NavLink
-            to="/notifications"
-            className="p-2 text-slate-600 dark:text-dark-muted hover:text-slate-900 rounded-xl"
-            title="Notifications"
-          >
-            <Bell className="w-5 h-5" />
-          </NavLink>
-
-          <NavLink
-            to="/chats"
-            className="relative p-2 text-slate-600 dark:text-dark-muted hover:text-slate-900 rounded-xl"
-            title="Direct Messages"
-          >
-            <MessageSquare className="w-5 h-5" />
-            {totalUnread > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-brand-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                {totalUnread > 9 ? '9+' : totalUnread}
-              </span>
-            )}
-          </NavLink>
-        </div>
-      </header>
-
-      {/* Mobile Bottom Navigation Bar: Home | Chats | + | Reels | Me (Section 8) */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 dark:bg-dark-surface/95 backdrop-blur-md border-t border-slate-200 dark:border-dark-border flex items-center justify-around px-2 z-40 select-none">
-        <NavLink
-          to="/home"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center flex-1 py-1 ${
-              isActive || location.pathname === '/'
-                ? 'text-brand-600 dark:text-brand-400 font-semibold'
-                : 'text-slate-400 dark:text-dark-muted'
-            }`
-          }
-        >
-          <Home className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Home</span>
-        </NavLink>
-
-        <NavLink
-          to="/chats"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center flex-1 py-1 relative ${
-              isActive || location.pathname.startsWith('/chat/')
-                ? 'text-brand-600 dark:text-brand-400 font-semibold'
-                : 'text-slate-400 dark:text-dark-muted'
-            }`
-          }
-        >
-          <MessageSquare className="w-5 h-5" />
-          {totalUnread > 0 && (
-            <span className="absolute top-1 right-3 w-3.5 h-3.5 bg-brand-600 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-              {totalUnread > 9 ? '9+' : totalUnread}
-            </span>
-          )}
-          <span className="text-[10px] mt-1">Chats</span>
-        </NavLink>
-
-        {/* Central Mobile Create Button (+) */}
-        <button
-          onClick={() => setCreateModalOpen(true)}
-          className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-brand-500/30 active:scale-90 transition-transform"
-          title="Create"
-        >
-          <Plus className="w-5 h-5 stroke-[2.5]" />
-        </button>
-
-        <NavLink
-          to="/reels"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center flex-1 py-1 ${
-              isActive ? 'text-brand-600 dark:text-brand-400 font-semibold' : 'text-slate-400 dark:text-dark-muted'
-            }`
-          }
-        >
-          <Film className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Reels</span>
-        </NavLink>
-
-        <NavLink
-          to="/profile"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center flex-1 py-1 ${
-              isActive ? 'text-brand-600 dark:text-brand-400 font-semibold' : 'text-slate-400 dark:text-dark-muted'
-            }`
-          }
-        >
-          <Avatar
-            src={user?.profilePicture}
-            name={user?.fullName || user?.username}
-            size="xs"
-            status="online"
-            className="flex-shrink-0"
-          />
-          <span className="text-[10px] mt-1">Me</span>
-        </NavLink>
-      </nav>
+      {/* Mobile Fixed Bottom Navigation Bar (5 Canonical Items: Home, Messages, Create, Explore, Profile) */}
+      {!hideMobileNav && (
+        <MobileBottomNav onOpenCreate={() => setCreateModalOpen(true)} />
+      )}
 
       {/* Global Content Creation Hub Modal */}
       <CreateModal

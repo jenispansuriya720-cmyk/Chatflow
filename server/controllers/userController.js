@@ -8,6 +8,8 @@ const Connection = require('../models/Connection');
 const Notification = require('../models/Notification');
 const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
+const AuditLog = require('../models/AuditLog');
+const { cleanupMedia } = require('../utils/mediaCleanup');
 
 // @desc    Get all users with search and filter
 // @route   GET /api/users
@@ -127,7 +129,8 @@ const updateProfile = async (req, res, next) => {
     if (fullName) user.fullName = fullName.trim();
     if (bio !== undefined) user.bio = bio;
     if (phone !== undefined) user.phone = phone;
-    if (profilePicture) user.profilePicture = profilePicture;
+    if (profilePicture !== undefined) user.profilePicture = profilePicture;
+    if (req.body.coverImage !== undefined) user.coverImage = req.body.coverImage;
     if (isPrivate !== undefined) user.isPrivate = Boolean(isPrivate);
     if (Array.isArray(interests)) user.interests = interests;
     if (settings) {
@@ -254,9 +257,21 @@ const changePassword = async (req, res, next) => {
     user.password = newPassword;
     await user.save();
 
+    try {
+      const ip = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'Unknown IP';
+      const userAgent = req.headers['user-agent'] || 'Unknown Device';
+      await sendPasswordChangedEmail({
+        to: user.email,
+        name: user.fullName || user.username,
+        timestamp: new Date().toUTCString(),
+      });
+    } catch (emailErr) {
+      console.error('[User Security] Error sending password changed email:', emailErr.message);
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Password changed successfully.',
+      message: 'Password changed successfully. A security confirmation email has been dispatched.',
     });
   } catch (error) {
     next(error);
@@ -433,6 +448,15 @@ const deleteAccount = async (req, res, next) => {
     await Conversation.deleteMany({ type: 'direct', participants: userId });
 
     await User.findByIdAndDelete(userId);
+
+    try {
+      await sendAccountDeletedEmail({
+        to: user.email,
+        name: user.fullName || user.username,
+      });
+    } catch (emailErr) {
+      console.error('[User Security] Error sending account deleted email:', emailErr.message);
+    }
 
     res.status(200).json({
       success: true,
@@ -699,10 +723,111 @@ const getCreatorAnalytics = async (req, res, next) => {
   }
 };
 
+// @desc    Delete user profile picture
+// @route   DELETE /api/users/profile-picture
+// @access  Private
+const deleteProfilePicture = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (user.profilePicture) {
+      await cleanupMedia(user.profilePicture, user._id);
+      user.profilePicture = '';
+      await user.save();
+
+      await AuditLog.create({
+        userId: user._id,
+        contentType: 'profile_picture',
+        contentId: user._id,
+        action: 'delete',
+        details: { action: 'removed_avatar' },
+      });
+    }
+
+    const updatedUser = await User.findById(user._id).select('-password');
+    res.status(200).json({
+      success: true,
+      message: 'Profile picture removed successfully.',
+      profilePicture: '',
+      user: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Update cover image
+// @route   PUT /api/users/cover
+// @access  Private
+const updateCoverImage = async (req, res, next) => {
+  try {
+    const { coverImage } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    user.coverImage = coverImage || '';
+    await user.save();
+
+    const updatedUser = await User.findById(user._id).select('-password');
+    res.status(200).json({
+      success: true,
+      message: 'Cover image updated successfully.',
+      coverImage: user.coverImage,
+      user: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete user cover image
+// @route   DELETE /api/users/cover
+// @access  Private
+const deleteCoverImage = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    if (user.coverImage) {
+      await cleanupMedia(user.coverImage, user._id);
+      user.coverImage = '';
+      await user.save();
+
+      await AuditLog.create({
+        userId: user._id,
+        contentType: 'cover',
+        contentId: user._id,
+        action: 'delete',
+        details: { action: 'removed_cover' },
+      });
+    }
+
+    const updatedUser = await User.findById(user._id).select('-password');
+    res.status(200).json({
+      success: true,
+      message: 'Cover image removed successfully.',
+      coverImage: '',
+      user: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getUsers,
   getUserById,
   updateProfile,
+  deleteProfilePicture,
+  updateCoverImage,
+  deleteCoverImage,
   completeOnboarding,
   togglePrivacy,
   changePassword,

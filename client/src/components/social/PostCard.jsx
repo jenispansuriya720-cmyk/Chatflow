@@ -15,19 +15,24 @@ import {
   UserX,
   VolumeX,
   ShieldAlert,
+  Trash2,
+  Link2,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import { useToast } from '../common/Toast';
 import Avatar from '../common/Avatar';
 import ReportModal from '../modals/ReportModal';
 import BlockConfirmModal from '../modals/BlockConfirmModal';
 import WhyThisPostModal from '../modals/WhyThisPostModal';
+import DeleteConfirmModal from '../modals/DeleteConfirmModal';
 import api from '../../services/api';
 
 const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
   const { user } = useAuth();
   const { addToast } = useToast();
 
+  const { socket } = useSocket();
   const [isLiked, setIsLiked] = useState(post.isLiked || false);
   const [likesCount, setLikesCount] = useState(post.likesCount || 0);
   const [isSaved, setIsSaved] = useState(post.isSaved || false);
@@ -36,13 +41,27 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
+  const [isUnavailable, setIsUnavailable] = useState(false);
 
   // Modals
   const [reportOpen, setReportOpen] = useState(false);
   const [blockOpen, setBlockOpen] = useState(false);
   const [whyOpen, setWhyOpen] = useState(false);
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
 
   const optionsRef = useRef(null);
+
+  // Real-time post deletion listener (Requirement 28)
+  useEffect(() => {
+    if (!socket) return;
+    const handlePostDeleted = ({ postId }) => {
+      if (postId === post._id) {
+        setIsUnavailable(true);
+      }
+    };
+    socket.on('post:deleted', handlePostDeleted);
+    return () => socket.off('post:deleted', handlePostDeleted);
+  }, [socket, post._id]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -78,8 +97,27 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
     if (onHidePost) onHidePost(post._id);
   };
 
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(`${window.location.origin}/post/${post._id}`);
+    addToast('Post link copied to clipboard!', 'success');
+    setOptionsOpen(false);
+  };
+
+  const handleDeletePost = async () => {
+    try {
+      const res = await api.delete(`/posts/${post._id}`);
+      if (res.data.success) {
+        addToast('Post deleted successfully', 'success');
+        setIsHidden(true);
+        if (onHidePost) onHidePost(post._id);
+      }
+    } catch (err) {
+      addToast(err.response?.data?.message || 'Failed to delete post', 'error');
+    }
+  };
+
   const mediaList = post.media || [];
-  const isOwnPost = post.author?._id === user?._id;
+  const isOwnPost = Boolean(user?._id && post.author?._id && post.author._id.toString() === user._id.toString());
 
   const handleToggleLike = async () => {
     const prevLiked = isLiked;
@@ -136,6 +174,14 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
 
   if (isHidden) return null;
 
+  if (isUnavailable) {
+    return (
+      <article className="bg-white dark:bg-dark-surface border border-dashed border-slate-300 dark:border-dark-border rounded-3xl p-6 text-center text-slate-400 dark:text-slate-500 text-xs italic select-none">
+        This post is no longer available.
+      </article>
+    );
+  }
+
   return (
     <article className="bg-white dark:bg-dark-surface border border-slate-200/80 dark:border-dark-border rounded-3xl overflow-hidden shadow-xs hover:shadow-md transition-shadow select-none">
       {/* 1. Header: Author & Location */}
@@ -173,7 +219,7 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
         <div className="relative" ref={optionsRef}>
           <button
             onClick={() => setOptionsOpen(!optionsOpen)}
-            className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-dark-hover text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+            className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-dark-hover text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
             title="Post options"
           >
             <MoreHorizontal className="w-4 h-4" />
@@ -182,26 +228,61 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
           {optionsOpen && (
             <div className="absolute right-0 top-8 w-52 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl z-30 py-1.5 animate-fade-in text-xs">
               <button
-                onClick={() => {
-                  setOptionsOpen(false);
-                  setWhyOpen(true);
-                }}
+                onClick={handleCopyLink}
                 className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-200 text-left transition-colors"
               >
-                <HelpCircle className="w-4 h-4 text-brand-500 flex-shrink-0" />
-                <span>Why am I seeing this?</span>
+                <Link2 className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <span>Copy link</span>
               </button>
 
               <button
-                onClick={handleDismissNotInterested}
+                onClick={() => {
+                  setOptionsOpen(false);
+                  if (onOpenShare) onOpenShare(post);
+                }}
                 className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-200 text-left transition-colors"
               >
-                <EyeOff className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                <span>Not interested</span>
+                <Share2 className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                <span>Share post</span>
               </button>
 
-              {!isOwnPost && (
+              {/* POST OWNER ACTIONS (Requirement 13 & 30) */}
+              {isOwnPost ? (
                 <>
+                  <div className="my-1 border-t border-slate-100 dark:border-dark-border" />
+                  <button
+                    onClick={() => {
+                      setOptionsOpen(false);
+                      setDeleteModalOpen(true);
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-rose-600 dark:text-rose-400 text-left transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500 flex-shrink-0" />
+                    <span>Delete post</span>
+                  </button>
+                </>
+              ) : (
+                /* OTHER USER ACTIONS ONLY (Requirement 13 & 30) */
+                <>
+                  <button
+                    onClick={() => {
+                      setOptionsOpen(false);
+                      setWhyOpen(true);
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-200 text-left transition-colors"
+                  >
+                    <HelpCircle className="w-4 h-4 text-brand-500 flex-shrink-0" />
+                    <span>Why am I seeing this?</span>
+                  </button>
+
+                  <button
+                    onClick={handleDismissNotInterested}
+                    className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-200 text-left transition-colors"
+                  >
+                    <EyeOff className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    <span>Not interested</span>
+                  </button>
+
                   <button
                     onClick={handleMuteCreator}
                     className="w-full flex items-center space-x-2.5 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-200 text-left transition-colors"
@@ -293,7 +374,7 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
             {/* Like */}
             <button
               onClick={handleToggleLike}
-              className={`flex items-center space-x-1.5 transition-transform active:scale-125 ${
+              className={`min-h-[44px] flex items-center space-x-1.5 transition-transform active:scale-125 ${
                 isLiked ? 'text-rose-500' : 'text-slate-600 dark:text-slate-300 hover:text-rose-500'
               }`}
             >
@@ -304,7 +385,7 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
             {/* Comment */}
             <button
               onClick={() => onOpenComments && onOpenComments(post)}
-              className="flex items-center space-x-1.5 text-slate-600 dark:text-slate-300 hover:text-brand-500 transition-colors"
+              className="min-h-[44px] flex items-center space-x-1.5 text-slate-600 dark:text-slate-300 hover:text-brand-500 transition-colors"
             >
               <MessageCircle className="w-5 h-5" />
               <span className="text-xs font-semibold">{post.commentsCount || 0}</span>
@@ -313,7 +394,7 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
             {/* Share to ChatFlow Chat */}
             <button
               onClick={() => onOpenShare && onOpenShare(post)}
-              className="text-slate-600 dark:text-slate-300 hover:text-brand-500 transition-colors"
+              className="min-h-[44px] min-w-[36px] flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-brand-500 transition-colors"
               title="Share post to Chat"
             >
               <Share2 className="w-5 h-5" />
@@ -323,7 +404,7 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
           {/* Save / Bookmark */}
           <button
             onClick={handleToggleSave}
-            className={`transition-colors ${
+            className={`min-h-[44px] min-w-[36px] flex items-center justify-center transition-colors ${
               isSaved ? 'text-brand-500' : 'text-slate-600 dark:text-slate-300 hover:text-brand-500'
             }`}
             title="Save post"
@@ -407,6 +488,16 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
         onClose={() => setBlockOpen(false)}
         targetUser={post.author}
         onBlocked={() => setIsHidden(true)}
+      />
+
+      <DeleteConfirmModal
+        isOpen={deleteModalOpen}
+        onClose={() => setDeleteModalOpen(false)}
+        onConfirm={handleDeletePost}
+        title="Delete post?"
+        description="This action will remove the post from ChatFlow."
+        confirmLabel="Delete"
+        isOwn={isOwnPost}
       />
     </article>
   );

@@ -23,11 +23,13 @@ import {
   Video,
   Radio,
   Upload,
+  Trash2,
 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Sidebar from '../../components/layout/Sidebar';
 import Avatar from '../../components/common/Avatar';
 import AvatarCropModal from '../../components/modals/AvatarCropModal';
+import DeleteConfirmModal from '../../components/modals/DeleteConfirmModal';
 import PostCard from '../../components/social/PostCard';
 import CommentsModal from '../../components/social/CommentsModal';
 import { useAuth } from '../../context/AuthContext';
@@ -71,6 +73,11 @@ const SocialProfilePage = () => {
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [cropImageSrc, setCropImageSrc] = useState(null);
   const fileInputRef = useRef(null);
+  const coverFileInputRef = useRef(null);
+
+  const [coverDeleteModalOpen, setCoverDeleteModalOpen] = useState(false);
+  const [avatarDeleteModalOpen, setAvatarDeleteModalOpen] = useState(false);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
 
   const handleAvatarFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -85,6 +92,70 @@ const SocialProfilePage = () => {
     };
     reader.readAsDataURL(file);
     e.target.value = '';
+  };
+
+  const handleCoverFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      addToast('Please select an image file (PNG, JPG, WebP)', 'error');
+      return;
+    }
+    try {
+      setIsUploadingCover(true);
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('entityType', 'cover');
+
+      const uploadRes = await api.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      if (uploadRes.data?.file?.url) {
+        const coverUrl = uploadRes.data.file.url;
+        const res = await api.put('/users/cover', { coverImage: coverUrl });
+        if (res.data?.success) {
+          setProfileUser((prev) => ({ ...prev, coverImage: coverUrl }));
+          updateUser({ ...authUser, coverImage: coverUrl });
+          addToast('Cover image updated successfully!', 'success');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      addToast(err.response?.data?.message || 'Failed to upload cover image', 'error');
+    } finally {
+      setIsUploadingCover(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveCover = async () => {
+    try {
+      const res = await api.delete('/users/cover');
+      if (res.data?.success) {
+        setProfileUser((prev) => ({ ...prev, coverImage: '' }));
+        updateUser({ ...authUser, coverImage: '' });
+        addToast('Cover photo removed successfully!', 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast(err.response?.data?.message || 'Failed to remove cover image', 'error');
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      const res = await api.delete('/users/profile-picture');
+      if (res.data?.success) {
+        setProfileUser((prev) => ({ ...prev, profilePicture: '' }));
+        setEditForm((prev) => ({ ...prev, profilePicture: '' }));
+        updateUser({ ...authUser, profilePicture: '' });
+        addToast('Profile picture removed successfully!', 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast(err.response?.data?.message || 'Failed to remove profile picture', 'error');
+    }
   };
 
   // Followers/Following list modal
@@ -287,23 +358,65 @@ const SocialProfilePage = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
-      <main className="flex-1 overflow-y-auto pb-24 md:pb-8">
+      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
           {/* Cover & Profile Header Card */}
           <div className="bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border rounded-3xl overflow-hidden shadow-xs">
-            {/* Gradient Banner */}
-            <div className="h-32 sm:h-44 bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600 relative">
-              <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px]" />
+            {/* Cover Image or Gradient Banner */}
+            <div className="h-36 sm:h-52 relative group bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600 overflow-hidden">
+              {profileUser?.coverImage ? (
+                <img
+                  src={profileUser.coverImage}
+                  alt="Profile Cover"
+                  className="w-full h-full object-cover object-center block"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-r from-brand-600 via-indigo-600 to-purple-600" />
+              )}
+              <div className="absolute inset-0 bg-black/10 backdrop-blur-[0.5px] pointer-events-none" />
+
+              {/* Cover Controls for Own Profile */}
+              {isOwnProfile && (
+                <div className="absolute top-3 right-3 flex items-center space-x-2 z-10">
+                  <input
+                    type="file"
+                    ref={coverFileInputRef}
+                    accept="image/*"
+                    onChange={handleCoverFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => coverFileInputRef.current?.click()}
+                    disabled={isUploadingCover}
+                    className="px-3 py-1.5 bg-black/50 hover:bg-black/70 backdrop-blur-md text-white text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-all shadow-md"
+                    title="Change Cover Image"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>{isUploadingCover ? 'Uploading...' : profileUser?.coverImage ? 'Change Cover' : 'Add Cover'}</span>
+                  </button>
+                  {profileUser?.coverImage && (
+                    <button
+                      type="button"
+                      onClick={() => setCoverDeleteModalOpen(true)}
+                      className="p-1.5 bg-rose-600/80 hover:bg-rose-600 backdrop-blur-md text-white rounded-xl transition-all shadow-md"
+                      title="Remove Cover Image"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Profile Info Row */}
             <div className="px-6 pb-6 pt-0 relative">
               <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between -mt-16 sm:-mt-20 mb-4 gap-4">
                 {/* Avatar */}
-                <div className="p-1.5 bg-white dark:bg-dark-surface rounded-full shadow-md flex-shrink-0">
+                <div className="relative group p-1.5 bg-white dark:bg-dark-surface rounded-full shadow-md flex-shrink-0">
                   <Avatar
                     src={profileUser?.profilePicture}
                     name={profileUser?.fullName || 'User'}
@@ -311,6 +424,16 @@ const SocialProfilePage = () => {
                     status={profileUser?.isOnline ? 'online' : 'offline'}
                     priority={true}
                   />
+                  {isOwnProfile && profileUser?.profilePicture && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarDeleteModalOpen(true)}
+                      className="absolute bottom-1 right-1 p-2 bg-rose-600 hover:bg-rose-700 text-white rounded-full shadow-lg transition-transform hover:scale-110"
+                      title="Remove Profile Picture"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -588,11 +711,23 @@ const SocialProfilePage = () => {
                     onClick={() => setSelectedPost(post)}
                     className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer bg-slate-900"
                   >
-                    <img
-                      src={post.media?.[0]?.url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80'}
-                      alt="Post"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    {post.media?.[0]?.url ? (
+                      <img
+                        src={post.media[0].url}
+                        alt="Post"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 p-4 flex flex-col justify-between text-slate-200">
+                        <MessageSquare className="w-5 h-5 text-brand-400 opacity-60" />
+                        <p className="text-xs font-medium line-clamp-4 leading-relaxed text-slate-300">
+                          {post.content || 'ChatFlow update'}
+                        </p>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}
+                        </span>
+                      </div>
+                    )}
                     {/* Hover Stats */}
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-4 text-white">
                       <div className="flex items-center space-x-1 text-xs font-bold">
@@ -627,11 +762,22 @@ const SocialProfilePage = () => {
                     onClick={() => navigate('/reels')}
                     className="group relative aspect-[9/16] rounded-2xl overflow-hidden cursor-pointer bg-slate-900 ring-1 ring-purple-500/20"
                   >
-                    <img
-                      src={reel.thumbnail || 'https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=600&auto=format&fit=crop&q=80'}
-                      alt="Reel"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    {reel.thumbnail ? (
+                      <img
+                        src={reel.thumbnail}
+                        alt="Reel"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-b from-purple-950/60 via-slate-900 to-black p-4 flex flex-col justify-between text-slate-200">
+                        <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-purple-400">
+                          <Film className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs font-semibold line-clamp-3 text-white drop-shadow-sm">
+                          {reel.caption || 'Reel video'}
+                        </p>
+                      </div>
+                    )}
                     <div className="absolute top-2 right-2 p-1 bg-black/60 backdrop-blur-md rounded-lg text-white">
                       <Film className="w-3.5 h-3.5" />
                     </div>
@@ -664,11 +810,23 @@ const SocialProfilePage = () => {
                     onClick={() => setSelectedPost(post)}
                     className="group relative aspect-square rounded-2xl overflow-hidden cursor-pointer bg-slate-900"
                   >
-                    <img
-                      src={post.media?.[0]?.url || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=600&auto=format&fit=crop&q=80'}
-                      alt="Saved Post"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    {post.media?.[0]?.url ? (
+                      <img
+                        src={post.media[0].url}
+                        alt="Saved Post"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gradient-to-br from-slate-800 to-slate-900 p-4 flex flex-col justify-between text-slate-200">
+                        <Bookmark className="w-5 h-5 text-amber-400 opacity-60" />
+                        <p className="text-xs font-medium line-clamp-4 leading-relaxed text-slate-300">
+                          {post.content || 'Saved Post'}
+                        </p>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : ''}
+                        </span>
+                      </div>
+                    )}
                     <div className="absolute top-2 right-2 p-1 bg-black/60 backdrop-blur-md rounded-lg text-amber-400">
                       <Bookmark className="w-3.5 h-3.5 fill-amber-400" />
                     </div>
@@ -737,6 +895,16 @@ const SocialProfilePage = () => {
                     <Camera className="w-3.5 h-3.5 text-brand-500" />
                     <span>Randomize Avatar</span>
                   </button>
+                  {Boolean(editForm.profilePicture || profileUser?.profilePicture) && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarDeleteModalOpen(true)}
+                      className="px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 text-rose-600 dark:text-rose-400 text-xs font-semibold rounded-xl flex items-center space-x-1.5 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Remove Photo</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -906,6 +1074,24 @@ const SocialProfilePage = () => {
           setEditForm((prev) => ({ ...prev, profilePicture: croppedDataUrl }));
           addToast('Profile picture cropped! Click Save Changes to apply.', 'info');
         }}
+      />
+
+      {/* Remove Cover Confirm Modal */}
+      <DeleteConfirmModal
+        isOpen={coverDeleteModalOpen}
+        onClose={() => setCoverDeleteModalOpen(false)}
+        onConfirm={handleRemoveCover}
+        title="Remove Cover Photo?"
+        description="Are you sure you want to remove your cover photo? This will permanently delete the uploaded cover image."
+      />
+
+      {/* Remove Profile Picture Confirm Modal */}
+      <DeleteConfirmModal
+        isOpen={avatarDeleteModalOpen}
+        onClose={() => setAvatarDeleteModalOpen(false)}
+        onConfirm={handleRemoveAvatar}
+        title="Remove Profile Picture?"
+        description="Are you sure you want to remove your profile picture? Your profile will display your initials until you upload a new photo."
       />
     </div>
   );

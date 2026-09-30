@@ -46,12 +46,12 @@ const SavedPage = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100 select-none">
+    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100 select-none">
       <Sidebar />
 
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {/* Header */}
-        <header className="px-6 py-4 border-b border-slate-200 dark:border-dark-border bg-white dark:bg-dark-surface flex items-center justify-between flex-shrink-0">
+        <header className="px-4 sm:px-6 pt-14 md:pt-4 pb-4 border-b border-slate-200 dark:border-dark-border bg-white dark:bg-dark-surface flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
               <Bookmark className="w-5 h-5" />
@@ -94,7 +94,7 @@ const SavedPage = () => {
         </div>
 
         {/* Content Stream */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6">
           <div className="max-w-xl mx-auto space-y-4">
             {loading ? (
               <div className="flex flex-col items-center justify-center p-16 space-y-3">

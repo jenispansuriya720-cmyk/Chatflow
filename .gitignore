@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 */node_modules/
 
@@ -9,6 +9,8 @@ build/
 
 # Local databases & runtime uploads
 server/test_db_data/
+server/.active_mongo_uri
+.vercel
 server/uploads/*
 !server/uploads/.gitkeep
 

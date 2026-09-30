@@ -23,31 +23,46 @@ const getConversations = async (req, res, next) => {
       .populate('admins', 'fullName username profilePicture')
       .sort({ updatedAt: -1 });
 
-    // Calculate unread counts for each conversation
-    const conversationsWithUnread = await Promise.all(
-      conversations.map(async (conv) => {
-        const unreadCount = await Message.countDocuments({
-          conversation: conv._id,
+    const convIds = conversations.map((c) => c._id);
+    const unreadAgg = await Message.aggregate([
+      {
+        $match: {
+          conversation: { $in: convIds },
           sender: { $ne: userId },
           'readBy.user': { $ne: userId },
           deletedFor: { $ne: userId },
-        });
+        },
+      },
+      {
+        $group: {
+          _id: '$conversation',
+          count: { $sum: 1 },
+        },
+      },
+    ]);
 
-        const isPinned = conv.pinnedBy.some(
-          (p) => p.toString() === userId.toString()
-        );
-        const isMuted = conv.mutedBy.some(
-          (m) => m.toString() === userId.toString()
-        );
+    const unreadMap = new Map();
+    unreadAgg.forEach((u) => {
+      unreadMap.set(u._id.toString(), u.count);
+    });
 
-        return {
-          ...conv.toObject(),
-          unreadCount,
-          isPinned,
-          isMuted,
-        };
-      })
-    );
+    // Calculate unread counts and flags for each conversation
+    const conversationsWithUnread = conversations.map((conv) => {
+      const unreadCount = unreadMap.get(conv._id.toString()) || 0;
+      const isPinned = (conv.pinnedBy || []).some(
+        (p) => p.toString() === userId.toString()
+      );
+      const isMuted = (conv.mutedBy || []).some(
+        (m) => m.toString() === userId.toString()
+      );
+
+      return {
+        ...conv.toObject(),
+        unreadCount,
+        isPinned,
+        isMuted,
+      };
+    });
 
     // Sort pinned conversations to the top, then by latest update
     conversationsWithUnread.sort((a, b) => {

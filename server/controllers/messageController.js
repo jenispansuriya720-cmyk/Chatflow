@@ -3,6 +3,11 @@ const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const UserSettings = require('../models/UserSettings');
 const Notification = require('../models/Notification');
+const AuditLog = require('../models/AuditLog');
+const Post = require('../models/Post');
+const Reel = require('../models/Reel');
+const Story = require('../models/Story');
+const { cleanupMedia } = require('../utils/mediaCleanup');
 
 // @desc    Get messages for a conversation
 // @route   GET /api/messages/:conversationId
@@ -76,13 +81,53 @@ const getMessages = async (req, res, next) => {
       }
     }
 
+    // Check shared content status (bulk check to eliminate N+1 queries)
+    const postIdsToCheck = [];
+    const reelIdsToCheck = [];
+    const storyIdsToCheck = [];
+
+    messages.forEach((msg) => {
+      if (msg.sharedContent && msg.sharedContent.contentId) {
+        if (msg.sharedContent.contentType === 'post') postIdsToCheck.push(msg.sharedContent.contentId);
+        else if (msg.sharedContent.contentType === 'reel') reelIdsToCheck.push(msg.sharedContent.contentId);
+        else if (msg.sharedContent.contentType === 'story') storyIdsToCheck.push(msg.sharedContent.contentId);
+      }
+    });
+
+    const [existingPosts, existingReels, existingStories] = await Promise.all([
+      postIdsToCheck.length > 0 ? Post.find({ _id: { $in: postIdsToCheck } }).select('_id').lean() : [],
+      reelIdsToCheck.length > 0 ? Reel.find({ _id: { $in: reelIdsToCheck } }).select('_id').lean() : [],
+      storyIdsToCheck.length > 0 ? Story.find({ _id: { $in: storyIdsToCheck } }).select('_id').lean() : [],
+    ]);
+
+    const existingPostIds = new Set(existingPosts.map((p) => p._id.toString()));
+    const existingReelIds = new Set(existingReels.map((r) => r._id.toString()));
+    const existingStoryIds = new Set(existingStories.map((s) => s._id.toString()));
+
+    const processedMessages = messages.map((msg) => {
+      const m = msg.toObject();
+      if (m.sharedContent && m.sharedContent.contentId) {
+        const cId = m.sharedContent.contentId.toString();
+        const { contentType } = m.sharedContent;
+        let exists = false;
+        if (contentType === 'post') exists = existingPostIds.has(cId);
+        else if (contentType === 'reel') exists = existingReelIds.has(cId);
+        else if (contentType === 'story') exists = existingStoryIds.has(cId);
+
+        if (!exists) {
+          m.sharedContent.isUnavailable = true;
+        }
+      }
+      return m;
+    });
+
     res.status(200).json({
       success: true,
-      count: messages.length,
+      count: processedMessages.length,
       total,
       page,
       pages: Math.ceil(total / limit),
-      messages,
+      messages: processedMessages,
     });
   } catch (error) {
     next(error);
@@ -95,17 +140,17 @@ const getMessages = async (req, res, next) => {
 const sendMessage = async (req, res, next) => {
   try {
     const senderId = req.user._id;
-    const { conversationId, attachments, voiceData, replyTo, clientMessageId, type } = req.body;
+    const { conversationId, attachments, voiceData, replyTo, clientMessageId, type, sharedContent, pollData, eventData } = req.body;
     const text = req.body.text || req.body.content || '';
 
     if (!conversationId) {
       return res.status(400).json({ success: false, message: 'Conversation ID is required.' });
     }
 
-    if (!text && (!attachments || attachments.length === 0) && !voiceData) {
+    if (!text && (!attachments || attachments.length === 0) && !voiceData && !sharedContent && !pollData && !eventData) {
       return res.status(400).json({
         success: false,
-        message: 'Message must contain text, an attachment, or voice data.',
+        message: 'Message must contain text, an attachment, voice data, or shared content.',
       });
     }
 
@@ -177,10 +222,13 @@ const sendMessage = async (req, res, next) => {
       sender: senderId,
       receiver: receiverId,
       clientMessageId: clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      type: type || (voiceData ? 'voice' : attachments?.length ? 'media' : 'text'),
+      type: type || (sharedContent ? `shared_${sharedContent.contentType}` : voiceData ? 'voice' : attachments?.length ? 'media' : 'text'),
       text: text || '',
       attachments: attachments || [],
       voiceData: voiceData || { duration: 0, waveform: [] },
+      sharedContent: sharedContent || undefined,
+      pollData: pollData || undefined,
+      eventData: eventData || undefined,
       replyTo: replyTo || null,
       status: 'sent',
       sentAt: new Date(),
@@ -478,27 +526,46 @@ const editMessage = async (req, res, next) => {
 const deleteMessage = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const { deleteType } = req.body; // 'for_everyone' or 'for_me'
+    const deleteType = req.body?.deleteType || req.query?.deleteType || 'for_everyone';
+    const isEveryone = deleteType === 'for_everyone' || deleteType === 'everyone';
 
     const message = await Message.findById(req.params.id);
     if (!message) {
       return res.status(404).json({ success: false, message: 'Message not found.' });
     }
 
-    if (deleteType === 'for_everyone') {
+    if (isEveryone) {
       if (message.sender.toString() !== userId.toString()) {
         return res.status(403).json({
           success: false,
-          message: 'You can only delete your own message for everyone.',
+          message: 'You are not allowed to delete this content.',
         });
+      }
+
+      // Safe cleanup of attachments/voice media if stored
+      if (message.attachments && message.attachments.length > 0) {
+        await cleanupMedia(message.attachments.map((a) => a.url), userId);
       }
 
       message.text = 'This message was deleted';
       message.attachments = [];
       message.voiceData = { duration: 0, waveform: [] };
+      message.sharedContent = undefined;
+      message.pollData = undefined;
+      message.eventData = undefined;
       message.isDeleted = true;
       message.deletedAt = new Date();
+      message.deletedBy = userId;
       await message.save();
+
+      // Audit logging
+      await AuditLog.create({
+        userId,
+        contentType: 'message',
+        contentId: message._id,
+        action: 'soft_delete',
+        details: { conversationId: message.conversation, deleteType: 'for_everyone' },
+      });
 
       if (req.io) {
         req.io.to(`conversation:${message.conversation}`).emit('messageDeleted', {
@@ -511,6 +578,13 @@ const deleteMessage = async (req, res, next) => {
           messageId: message._id,
           deleteType: 'for_everyone',
         });
+        if (message.receiver) {
+          req.io.to(`user:${message.receiver}`).emit('message:deleted', {
+            conversationId: message.conversation,
+            messageId: message._id,
+            deleteType: 'for_everyone',
+          });
+        }
       }
 
       return res.status(200).json({
@@ -524,6 +598,15 @@ const deleteMessage = async (req, res, next) => {
         message.deletedFor.push(userId);
         await message.save();
       }
+
+      // Audit logging
+      await AuditLog.create({
+        userId,
+        contentType: 'message',
+        contentId: message._id,
+        action: 'delete_for_me',
+        details: { conversationId: message.conversation },
+      });
 
       return res.status(200).json({
         success: true,
