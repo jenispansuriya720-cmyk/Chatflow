@@ -17,6 +17,7 @@ const postSchema = new mongoose.Schema(
       {
         url: { type: String, required: true },
         fileType: { type: String, enum: ['image', 'video'], default: 'image' },
+        publicId: { type: String, default: '' },
         thumbnail: { type: String, default: '' },
       },
     ],

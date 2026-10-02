@@ -72,6 +72,8 @@ const ChatItem = ({ conversation, isActive, onClick }) => {
       if (type === 'image') content = '📷 Photo';
       else if (type === 'video') content = '🎥 Video';
       else content = '📁 Document';
+    } else if (lastMsg.imageUrl) {
+      content = '📷 Photo';
     }
 
     return (

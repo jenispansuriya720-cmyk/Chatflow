@@ -51,6 +51,11 @@ const conversationSchema = new mongoose.Schema(
         ref: 'User',
       },
     ],
+    theme: {
+      type: String,
+      default: 'default',
+      trim: true,
+    },
   },
   {
     timestamps: true,

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
 import { Search, ChevronUp, ChevronDown, X, MessageSquareDashed } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useChatTheme } from '../../context/ChatThemeContext';
 import MessageBubble from './MessageBubble';
@@ -9,6 +10,7 @@ import MediaPreviewModal from '../modals/MediaPreviewModal';
 import ForwardModal from '../modals/ForwardModal';
 
 const MessageList = ({ isSearchOpen, onCloseSearch }) => {
+  const { user } = useAuth();
   const { activeConversation, messages, loadingMessages } = useChat();
   const { wallpaper, wallpaperOpacity } = useChatTheme();
 
@@ -166,10 +168,43 @@ const MessageList = ({ isSearchOpen, onCloseSearch }) => {
         ) : messages.length > 0 ? (
           messages.map((msg, idx) => {
             const prevMsg = messages[idx - 1];
+            const nextMsg = messages[idx + 1];
+
             const showDate =
               !prevMsg ||
               new Date(msg.createdAt).toDateString() !==
                 new Date(prevMsg.createdAt).toDateString();
+
+            const getSenderId = (m) => (m?.sender?._id || m?.senderId || m?.sender)?.toString();
+            const currentSenderId = getSenderId(msg);
+            const prevSenderId = prevMsg ? getSenderId(prevMsg) : null;
+            const nextSenderId = nextMsg ? getSenderId(nextMsg) : null;
+
+            const isPrevSameDate =
+              prevMsg &&
+              new Date(prevMsg.createdAt).toDateString() === new Date(msg.createdAt).toDateString();
+            const isNextSameDate =
+              nextMsg &&
+              new Date(nextMsg.createdAt).toDateString() === new Date(msg.createdAt).toDateString();
+
+            const prevTimeDiff = prevMsg
+              ? Math.abs(new Date(msg.createdAt) - new Date(prevMsg.createdAt))
+              : Infinity;
+            const nextTimeDiff = nextMsg
+              ? Math.abs(new Date(nextMsg.createdAt) - new Date(msg.createdAt))
+              : Infinity;
+
+            const isFirstInGroup =
+              showDate ||
+              !isPrevSameDate ||
+              prevSenderId !== currentSenderId ||
+              prevTimeDiff > 5 * 60 * 1000;
+
+            const isLastInGroup =
+              !nextMsg ||
+              !isNextSameDate ||
+              nextSenderId !== currentSenderId ||
+              nextTimeDiff > 5 * 60 * 1000;
 
             const isMatch =
               inChatSearch.trim() &&
@@ -185,6 +220,8 @@ const MessageList = ({ isSearchOpen, onCloseSearch }) => {
                   onOpenMedia={(media) => setSelectedMedia(media)}
                   onForward={(message) => setForwardingMessage(message)}
                   highlight={isMatch}
+                  isFirstInGroup={isFirstInGroup}
+                  isLastInGroup={isLastInGroup}
                 />
               </React.Fragment>
             );

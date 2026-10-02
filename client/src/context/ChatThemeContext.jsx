@@ -1,82 +1,51 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import api from '../services/api';
 import { useAuth } from './AuthContext';
+import { useSocket } from './SocketContext';
+import { useChat } from './ChatContext';
 import { BUILT_IN_THEMES, getThemeById } from '../constants/chatThemes';
 
 const ChatThemeContext = createContext();
 
 export const ChatThemeProvider = ({ conversationId, children }) => {
   const { user } = useAuth();
+  const { socket } = useSocket();
+  const { activeConversation, setConversations, setActiveConversation } = useChat();
 
-  const getStorageKey = useCallback(
-    (cId) => `chatflow_theme_${user?._id || 'guest'}_${cId || 'none'}`,
-    [user?._id]
-  );
-
-  // Initial theme state from localStorage for zero-flicker loading
-  const getInitialThemeState = () => {
-    if (!conversationId || !user) {
-      return {
-        themeType: 'preset',
-        themeId: 'default',
-        bubbleStyle: 'classic',
-        fontSize: 'medium',
-        density: 'comfortable',
-        backgroundEffect: 'none',
-        customTheme: null,
-        isDefault: true,
-      };
+  // Initial theme from active conversation if present, otherwise default
+  const getInitialTheme = () => {
+    if (activeConversation && activeConversation._id === conversationId && activeConversation.theme) {
+      return activeConversation.theme;
     }
-    try {
-      const cached = localStorage.getItem(getStorageKey(conversationId));
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch {
-      // Fallback
-    }
-    return {
-      themeType: 'preset',
-      themeId: 'default',
-      bubbleStyle: 'classic',
-      fontSize: 'medium',
-      density: 'comfortable',
-      backgroundEffect: 'none',
-      customTheme: null,
-      isDefault: true,
-    };
+    return 'default';
   };
 
-  const [themeState, setThemeState] = useState(getInitialThemeState);
+  const [themeState, setThemeState] = useState(() => ({
+    themeType: 'preset',
+    themeId: getInitialTheme(),
+    bubbleStyle: 'classic',
+    fontSize: 'medium',
+    density: 'comfortable',
+    backgroundEffect: 'none',
+    customTheme: null,
+    isDefault: getInitialTheme() === 'default',
+  }));
+
   const [loadingTheme, setLoadingTheme] = useState(false);
   const [favorites, setFavorites] = useState([]);
   const [recentThemes, setRecentThemes] = useState([]);
   const [globalChatAppearance, setGlobalChatAppearance] = useState(null);
 
-  // Sync cache when conversationId changes
+  // Sync state when activeConversation changes
   useEffect(() => {
-    if (conversationId && user) {
-      const cached = localStorage.getItem(getStorageKey(conversationId));
-      if (cached) {
-        try {
-          setThemeState(JSON.parse(cached));
-        } catch {
-          // ignore
-        }
-      } else {
-        setThemeState({
-          themeType: 'preset',
-          themeId: 'default',
-          bubbleStyle: 'classic',
-          fontSize: 'medium',
-          density: 'comfortable',
-          backgroundEffect: 'none',
-          customTheme: null,
-          isDefault: true,
-        });
-      }
+    if (activeConversation && activeConversation._id === conversationId && activeConversation.theme) {
+      setThemeState((prev) => ({
+        ...prev,
+        themeId: activeConversation.theme,
+        isDefault: activeConversation.theme === 'default',
+      }));
     }
-  }, [conversationId, user, getStorageKey]);
+  }, [conversationId, activeConversation?.theme]);
 
   // Load user theme preferences (favorites, recent, global fallback)
   useEffect(() => {
@@ -96,79 +65,93 @@ export const ChatThemeProvider = ({ conversationId, children }) => {
     fetchPreferences();
   }, [user]);
 
-  // Fetch server theme for current conversation
+  // Fetch shared server theme for this conversation
   const fetchConversationTheme = useCallback(async () => {
     if (!conversationId || !user) return;
     try {
       setLoadingTheme(true);
       const res = await api.get(`/conversations/${conversationId}/theme`);
-      if (res.data.success) {
-        if (res.data.theme) {
-          const loaded = {
-            themeType: res.data.theme.themeType || 'preset',
-            themeId: res.data.theme.themeId || 'default',
-            bubbleStyle: res.data.theme.bubbleStyle || 'classic',
-            fontSize: res.data.theme.fontSize || 'medium',
-            density: res.data.theme.density || 'comfortable',
-            backgroundEffect: res.data.theme.backgroundEffect || 'none',
-            customTheme: res.data.theme.customTheme || null,
-            isDefault: false,
-          };
-          setThemeState(loaded);
-          localStorage.setItem(getStorageKey(conversationId), JSON.stringify(loaded));
-        } else {
-          const def = {
-            themeType: 'preset',
-            themeId: 'default',
-            bubbleStyle: 'classic',
-            fontSize: 'medium',
-            density: 'comfortable',
-            backgroundEffect: 'none',
-            customTheme: null,
-            isDefault: true,
-          };
-          setThemeState(def);
-          localStorage.removeItem(getStorageKey(conversationId));
-        }
+      if (res.data.success && res.data.theme) {
+        const loadedTheme = res.data.theme || 'default';
+        setThemeState((prev) => ({
+          ...prev,
+          themeId: loadedTheme,
+          isDefault: loadedTheme === 'default',
+        }));
       }
     } catch (err) {
       console.warn('Failed to fetch conversation theme from server:', err.message);
     } finally {
       setLoadingTheme(false);
     }
-  }, [conversationId, user, getStorageKey]);
+  }, [conversationId, user]);
 
   useEffect(() => {
     fetchConversationTheme();
   }, [fetchConversationTheme]);
 
-  // Save personal theme
+  // Listen for real-time Socket.IO chat:themeUpdated broadcast
+  useEffect(() => {
+    if (!socket || !conversationId) return;
+
+    const handleThemeUpdated = ({ conversationId: updatedConvId, theme: newTheme }) => {
+      if (String(updatedConvId) === String(conversationId)) {
+        const validatedTheme = newTheme || 'default';
+        setThemeState((prev) => ({
+          ...prev,
+          themeId: validatedTheme,
+          isDefault: validatedTheme === 'default',
+        }));
+      }
+    };
+
+    socket.on('chat:themeUpdated', handleThemeUpdated);
+
+    return () => {
+      socket.off('chat:themeUpdated', handleThemeUpdated);
+    };
+  }, [socket, conversationId]);
+
+  // Save shared conversation theme
   const saveTheme = async (newThemePayload) => {
     if (!conversationId) return { success: false, message: 'No active conversation' };
     try {
-      const res = await api.put(`/conversations/${conversationId}/theme`, newThemePayload);
+      const selectedTheme = typeof newThemePayload === 'string'
+        ? newThemePayload
+        : (newThemePayload?.theme || newThemePayload?.themeId || 'default');
+
+      const res = await api.put(`/conversations/${conversationId}/theme`, {
+        theme: selectedTheme,
+      });
+
       if (res.data.success) {
-        const saved = {
-          themeType: res.data.theme.themeType,
-          themeId: res.data.theme.themeId,
-          bubbleStyle: res.data.theme.bubbleStyle,
-          fontSize: res.data.theme.fontSize,
-          density: res.data.theme.density,
-          backgroundEffect: res.data.theme.backgroundEffect,
-          customTheme: res.data.theme.customTheme,
-          isDefault: false,
-        };
-        setThemeState(saved);
-        localStorage.setItem(getStorageKey(conversationId), JSON.stringify(saved));
+        const savedTheme = res.data.theme || selectedTheme;
+        setThemeState((prev) => ({
+          ...prev,
+          themeId: savedTheme,
+          isDefault: savedTheme === 'default',
+        }));
+
+        // Keep local context synced
+        if (setActiveConversation) {
+          setActiveConversation((prev) =>
+            prev && prev._id === conversationId ? { ...prev, theme: savedTheme } : prev
+          );
+        }
+        if (setConversations) {
+          setConversations((prev) =>
+            prev.map((c) => (c._id === conversationId ? { ...c, theme: savedTheme } : c))
+          );
+        }
 
         // Update recents locally
-        if (saved.themeId && saved.themeId !== 'default') {
+        if (savedTheme && savedTheme !== 'default') {
           setRecentThemes((prev) => {
-            const filtered = prev.filter((id) => id !== saved.themeId);
-            return [saved.themeId, ...filtered].slice(0, 6);
+            const filtered = prev.filter((id) => id !== savedTheme);
+            return [savedTheme, ...filtered].slice(0, 6);
           });
         }
-        return { success: true };
+        return { success: true, theme: savedTheme };
       }
       return { success: false, message: res.data.message };
     } catch (err) {
@@ -182,24 +165,28 @@ export const ChatThemeProvider = ({ conversationId, children }) => {
 
   // Reset theme to default
   const resetTheme = async () => {
-    if (!conversationId) return;
+    if (!conversationId) return { success: false };
     try {
       const res = await api.delete(`/conversations/${conversationId}/theme`);
       if (res.data.success) {
-        const def = {
-          themeType: 'preset',
+        setThemeState((prev) => ({
+          ...prev,
           themeId: 'default',
-          bubbleStyle: 'classic',
-          fontSize: 'medium',
-          density: 'comfortable',
-          backgroundEffect: 'none',
-          customTheme: null,
           isDefault: true,
-        };
-        setThemeState(def);
-        localStorage.removeItem(getStorageKey(conversationId));
+        }));
+        if (setActiveConversation) {
+          setActiveConversation((prev) =>
+            prev && prev._id === conversationId ? { ...prev, theme: 'default' } : prev
+          );
+        }
+        if (setConversations) {
+          setConversations((prev) =>
+            prev.map((c) => (c._id === conversationId ? { ...c, theme: 'default' } : c))
+          );
+        }
         return { success: true };
       }
+      return { success: false, message: res.data.message };
     } catch (err) {
       console.error('Error resetting chat theme:', err);
       return {
@@ -221,7 +208,7 @@ export const ChatThemeProvider = ({ conversationId, children }) => {
     }
   };
 
-  // Determine active theme colors (Priority: Personal Theme -> Global Appearance -> Built-in Default)
+  // Determine active theme colors (Priority: Conversation Theme -> Global Appearance -> Built-in Default)
   const resolvedTheme = useMemo(() => {
     if (themeState.themeType === 'custom' && themeState.customTheme) {
       return {

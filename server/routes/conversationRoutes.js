@@ -37,7 +37,7 @@ router.put('/:id/pin', togglePin);
 router.put('/:id/mute', toggleMute);
 router.delete('/:id', deleteConversation);
 
-// Personal Conversation Themes (isolated per userId + conversationId)
+// Shared Two-Sided Conversation Theme (shared across all conversation participants)
 router.get('/:id/theme', getConversationTheme);
 router.put('/:id/theme', updateConversationTheme);
 router.delete('/:id/theme', deleteConversationTheme);

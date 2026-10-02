@@ -263,8 +263,14 @@ npm test
 - `POST   /api/messages/:id/forward` — Forward message to another conversation
 - `PUT    /api/messages/read/:conversationId` — Mark conversation messages as read
 
-### Media Upload
-- `POST /api/upload` — Upload image, audio, video, or document (returns static URL)
+### Media Upload (Production Storage & Cloudinary)
+- `POST /api/upload` — Upload general media (image, audio, video, document) with entity tracking
+- `POST /api/upload/post-image` — Strict image validation & upload for Posts (`chatflow/posts`)
+- `POST /api/upload/reel-cover` — Strict image validation & upload for Reel covers/thumbnails (`chatflow/reels`)
+- `POST /api/upload/story-image` — Strict image validation & upload for 24h Stories (`chatflow/stories`)
+- `POST /api/upload/chat-image` — Strict image validation & upload for 1:1 and Group Chat (`chatflow/chat`)
+
+*Features automatic Cloudinary folder routing when API credentials are provided, seamless local `/uploads` disk fallback with ownership verification, and transactional media cleanup on delete or failure.*
 
 ### Notifications
 - `GET /api/notifications` — Get user notifications

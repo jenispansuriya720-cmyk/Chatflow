@@ -61,6 +61,10 @@ const messageSchema = new mongoose.Schema(
           type: String,
           required: true,
         },
+        publicId: {
+          type: String,
+          default: '',
+        },
         name: {
           type: String,
           default: 'attachment',
@@ -75,6 +79,10 @@ const messageSchema = new mongoose.Schema(
         },
       },
     ],
+    imageUrl: {
+      type: String,
+      default: '',
+    },
     voiceData: {
       duration: {
         type: Number,
@@ -221,6 +229,16 @@ messageSchema.virtual('recipientId').get(function () {
 });
 messageSchema.virtual('content').get(function () {
   return this.text;
+});
+messageSchema.virtual('messageType').get(function () {
+  return this.type;
+});
+messageSchema.virtual('resolvedImageUrl').get(function () {
+  if (this.imageUrl) return this.imageUrl;
+  if (this.attachments && this.attachments.length > 0 && this.attachments[0].fileType === 'image') {
+    return this.attachments[0].url;
+  }
+  return '';
 });
 
 messageSchema.index({ conversation: 1, createdAt: 1 });

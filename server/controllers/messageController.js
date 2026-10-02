@@ -140,17 +140,17 @@ const getMessages = async (req, res, next) => {
 const sendMessage = async (req, res, next) => {
   try {
     const senderId = req.user._id;
-    const { conversationId, attachments, voiceData, replyTo, clientMessageId, type, sharedContent, pollData, eventData } = req.body;
+    const { conversationId, attachments, voiceData, replyTo, clientMessageId, type, sharedContent, pollData, eventData, imageUrl } = req.body;
     const text = req.body.text || req.body.content || '';
 
     if (!conversationId) {
       return res.status(400).json({ success: false, message: 'Conversation ID is required.' });
     }
 
-    if (!text && (!attachments || attachments.length === 0) && !voiceData && !sharedContent && !pollData && !eventData) {
+    if (!text && (!attachments || attachments.length === 0) && !imageUrl && !voiceData && !sharedContent && !pollData && !eventData) {
       return res.status(400).json({
         success: false,
-        message: 'Message must contain text, an attachment, voice data, or shared content.',
+        message: 'Message must contain text, an attachment, an image, voice data, or shared content.',
       });
     }
 
@@ -217,13 +217,18 @@ const sendMessage = async (req, res, next) => {
       }
     }
 
+    const isImageMsg = type === 'image' || Boolean(imageUrl) || (attachments && attachments.some((a) => a.fileType === 'image'));
+    const resolvedType = type || (isImageMsg ? 'image' : sharedContent ? `shared_${sharedContent.contentType}` : voiceData ? 'voice' : attachments?.length ? 'media' : 'text');
+    const resolvedImageUrl = imageUrl || (attachments?.find((a) => a.fileType === 'image')?.url) || '';
+
     const newMessage = await Message.create({
       conversation: conversationId,
       sender: senderId,
       receiver: receiverId,
       clientMessageId: clientMessageId || `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      type: type || (sharedContent ? `shared_${sharedContent.contentType}` : voiceData ? 'voice' : attachments?.length ? 'media' : 'text'),
+      type: resolvedType,
       text: text || '',
+      imageUrl: resolvedImageUrl,
       attachments: attachments || [],
       voiceData: voiceData || { duration: 0, waveform: [] },
       sharedContent: sharedContent || undefined,
@@ -282,6 +287,14 @@ const sendMessage = async (req, res, next) => {
       message: populatedMessage,
     });
   } catch (error) {
+    if (req.body?.attachments && Array.isArray(req.body.attachments)) {
+      const urls = req.body.attachments.map((a) => a.url).filter(Boolean);
+      if (urls.length > 0) {
+        await cleanupMedia(urls, req.user._id).catch(() => {});
+      }
+    } else if (req.body?.imageUrl) {
+      await cleanupMedia([req.body.imageUrl], req.user._id).catch(() => {});
+    }
     next(error);
   }
 };
@@ -542,12 +555,20 @@ const deleteMessage = async (req, res, next) => {
         });
       }
 
-      // Safe cleanup of attachments/voice media if stored
+      // Safe cleanup of attachments/voice/image media if stored
+      const mediaUrlsToClean = [];
       if (message.attachments && message.attachments.length > 0) {
-        await cleanupMedia(message.attachments.map((a) => a.url), userId);
+        mediaUrlsToClean.push(...message.attachments.map((a) => a.url));
+      }
+      if (message.imageUrl) {
+        mediaUrlsToClean.push(message.imageUrl);
+      }
+      if (mediaUrlsToClean.length > 0) {
+        await cleanupMedia(mediaUrlsToClean, userId);
       }
 
       message.text = 'This message was deleted';
+      message.imageUrl = '';
       message.attachments = [];
       message.voiceData = { duration: 0, waveform: [] };
       message.sharedContent = undefined;

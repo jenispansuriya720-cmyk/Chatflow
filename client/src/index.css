@@ -465,12 +465,37 @@ html, body {
   --chat-row-spacing: 0.25rem;
 }
 
-/* Bubble Styles */
-.bubble-style-classic .chat-bubble-out {
+/* Bubble Styles & Burst Grouping */
+.chat-bubble-out {
   border-radius: 1.25rem 1.25rem 0.25rem 1.25rem;
 }
-.bubble-style-classic .chat-bubble-in {
+.chat-bubble-in {
   border-radius: 1.25rem 1.25rem 1.25rem 0.25rem;
+}
+
+.bubble-group-first.chat-bubble-out {
+  border-radius: 1.25rem 1.25rem 0.5rem 1.25rem !important;
+}
+.bubble-group-first.chat-bubble-in {
+  border-radius: 1.25rem 1.25rem 1.25rem 0.5rem !important;
+}
+.bubble-group-middle.chat-bubble-out {
+  border-radius: 1.25rem 0.5rem 0.5rem 1.25rem !important;
+}
+.bubble-group-middle.chat-bubble-in {
+  border-radius: 0.5rem 1.25rem 1.25rem 0.5rem !important;
+}
+.bubble-group-last.chat-bubble-out {
+  border-radius: 1.25rem 0.5rem 0.25rem 1.25rem !important;
+}
+.bubble-group-last.chat-bubble-in {
+  border-radius: 0.5rem 1.25rem 1.25rem 0.25rem !important;
+}
+.bubble-group-first-last.chat-bubble-out {
+  border-radius: 1.25rem 1.25rem 0.25rem 1.25rem !important;
+}
+.bubble-group-first-last.chat-bubble-in {
+  border-radius: 1.25rem 1.25rem 1.25rem 0.25rem !important;
 }
 
 .bubble-style-soft .chat-bubble-out {

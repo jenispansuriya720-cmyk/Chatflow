@@ -277,6 +277,12 @@ const createPost = async (req, res, next) => {
       },
     });
   } catch (error) {
+    if (req.body?.media && Array.isArray(req.body.media)) {
+      const urls = req.body.media.map((m) => m.url || m).filter(Boolean);
+      if (urls.length > 0) {
+        await cleanupMedia(urls, req.user._id).catch(() => {});
+      }
+    }
     next(error);
   }
 };

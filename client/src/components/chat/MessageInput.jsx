@@ -10,6 +10,8 @@ import {
   FileText,
   Video as VideoIcon,
   Loader2,
+  AlertCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { useChat } from '../../context/ChatContext';
 import VoiceRecorder from './VoiceRecorder';
@@ -19,6 +21,16 @@ const EMOJI_CATEGORIES = {
   Smileys: ['😀', '😂', '🥹', '😍', '😎', '🥳', '🤔', '🙌', '🔥', '✨', '🚀', '💯'],
   Gestures: ['👍', '👎', '👏', '🤝', '✌️', '💪', '🙏', '❤️', '💖', '🎉', '🌟', '👀'],
   Objects: ['💻', '📱', '☕', '🍕', '🍻', '⚡', '💡', '🎨', '🎯', '🎸', '🎮', '🏖️'],
+};
+
+const MAX_IMAGE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+const ALLOWED_IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+const formatFileSize = (bytes) => {
+  if (!bytes) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
 const MessageInput = () => {
@@ -34,9 +46,14 @@ const MessageInput = () => {
   const typingList = typingUsers[activeConversation?._id] || [];
 
   const [text, setText] = useState('');
-  const [attachments, setAttachments] = useState([]);
+  
+  // Pending files before upload: [{ file, previewUrl, name, size, type, isImage }]
+  const [pendingFiles, setPendingFiles] = useState([]);
+  
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -62,6 +79,17 @@ const MessageInput = () => {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
+  // Revoke object URLs on cleanup
+  useEffect(() => {
+    return () => {
+      pendingFiles.forEach((p) => {
+        if (p.previewUrl && p.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(p.previewUrl);
+        }
+      });
+    };
+  }, [pendingFiles]);
+
   // Handle typing debounce
   const handleTextChange = (e) => {
     setText(e.target.value);
@@ -82,60 +110,166 @@ const MessageInput = () => {
     }
   };
 
-  // Upload file
-  const handleFileSelect = async (e) => {
+  // Select file handler with strict validation and local preview (pre-send)
+  const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setUploadError('');
-    // 50MB validation limit
-    if (file.size > 50 * 1024 * 1024) {
-      setUploadError('File size exceeds 50MB limit.');
+    setShowAttachMenu(false);
+
+    // 1. Empty file validation
+    if (file.size === 0) {
+      setUploadError('The selected file is empty.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
       return;
     }
 
-    try {
-      setIsUploading(true);
-      setShowAttachMenu(false);
+    const isImage = file.type.startsWith('image/');
+    const ext = file.name.split('.').pop()?.toLowerCase();
 
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await api.post('/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      if (res.data.success) {
-        setAttachments((prev) => [...prev, res.data.file]);
+    // 2. Validate image format if selecting an image
+    if (isImage) {
+      if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
+        setUploadError('Unsupported image format. Allowed: JPG, PNG, WEBP, GIF.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
+        return;
       }
-    } catch (err) {
-      console.error('File upload failed:', err);
-      setUploadError('Upload failed. Please try again.');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      if (cameraInputRef.current) cameraInputRef.current.value = '';
+
+      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+        setUploadError(`Image is too large (${formatFileSize(file.size)}). Limit is 20MB.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
+        return;
+      }
+    } else {
+      // General media limit: 50MB
+      if (file.size > 50 * 1024 * 1024) {
+        setUploadError('File size exceeds 50MB limit.');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (cameraInputRef.current) cameraInputRef.current.value = '';
+        return;
+      }
     }
+
+    // Generate local preview URL
+    const previewUrl = isImage ? URL.createObjectURL(file) : '';
+
+    setPendingFiles((prev) => [
+      ...prev,
+      {
+        file,
+        previewUrl,
+        name: file.originalname || file.name,
+        size: file.size,
+        mimeType: file.type,
+        isImage,
+      },
+    ]);
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
-  // Send message
+  const removePendingFile = (index) => {
+    setPendingFiles((prev) => {
+      const target = prev[index];
+      if (target?.previewUrl && target.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  // Send message flow: Upload pending file(s) to real storage -> Create message in DB -> Socket delivery
   const handleSend = async () => {
-    if ((!text.trim() && attachments.length === 0) || isUploading) return;
+    if ((!text.trim() && pendingFiles.length === 0) || isUploading) return;
 
     try {
+      setIsUploading(true);
+      setUploadError('');
+      setUploadProgress(10);
+
+      const uploadedAttachments = [];
+      let primaryImageUrl = '';
+
+      // Upload any pending files to real media storage first
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const item = pendingFiles[i];
+        const formData = new FormData();
+        formData.append('file', item.file);
+        formData.append('entityType', 'chat');
+
+        const uploadEndpoint = item.isImage ? '/upload/chat-image' : '/upload';
+
+        const res = await api.post(uploadEndpoint, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const currentStep = (i / pendingFiles.length) * 80;
+              const stepProgress = ((progressEvent.loaded / progressEvent.total) * 80) / pendingFiles.length;
+              setUploadProgress(Math.min(85, Math.round(currentStep + stepProgress)));
+            }
+          },
+        });
+
+        if (!res.data.success || !res.data.file?.url) {
+          throw new Error('Image upload failed. Could not verify storage URL.');
+        }
+
+        const uploaded = res.data.file;
+        uploadedAttachments.push({
+          fileType: uploaded.fileType || (item.isImage ? 'image' : 'document'),
+          url: uploaded.url,
+          publicId: uploaded.publicId || '',
+          name: uploaded.name || item.name,
+          size: uploaded.size || item.size,
+          mimeType: uploaded.mimeType || item.mimeType,
+        });
+
+        if (item.isImage && !primaryImageUrl) {
+          primaryImageUrl = uploaded.url;
+        }
+      }
+
+      setUploadProgress(90);
+
+      // Determine message type
+      const hasImage = uploadedAttachments.some((a) => a.fileType === 'image') || Boolean(primaryImageUrl);
+      const messageType = hasImage ? 'image' : uploadedAttachments.length > 0 ? 'media' : 'text';
+
+      // Send to server & Socket.IO (never emit fake message before upload confirmed)
       await sendMessage({
         text: text.trim(),
-        attachments,
+        attachments: uploadedAttachments,
+        type: messageType,
+        imageUrl: primaryImageUrl,
       });
 
+      // Cleanup on success
+      pendingFiles.forEach((p) => {
+        if (p.previewUrl && p.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(p.previewUrl);
+        }
+      });
+      setPendingFiles([]);
       setText('');
-      setAttachments([]);
+      setUploadProgress(100);
       sendTypingStatus(false);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
     } catch (err) {
-      console.error('Failed to send:', err);
+      console.error('Failed to send message:', err);
+      const msg =
+        err.response?.data?.message ||
+        err.message ||
+        'Image upload failed. Please try again.';
+      setUploadError(msg);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -169,10 +303,6 @@ const MessageInput = () => {
     }
   };
 
-  const removeAttachment = (index) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-  };
-
   if (!activeConversation) return null;
 
   return (
@@ -183,7 +313,7 @@ const MessageInput = () => {
         borderColor: 'var(--chat-border, #e2e8f0)',
       }}
     >
-      {/* Floating Theme-Aware Typing Indicator (Requirement 33) */}
+      {/* Floating Theme-Aware Typing Indicator */}
       {typingList.length > 0 && (
         <div className="absolute -top-7 left-4 flex items-center space-x-1.5 px-3 py-0.5 rounded-full bg-white/90 dark:bg-dark-card/90 backdrop-blur-xs border border-slate-200 dark:border-dark-border shadow-xs text-[11px] text-slate-500 animate-slide-up z-20">
           <span className="font-medium text-slate-700 dark:text-slate-300">
@@ -205,6 +335,7 @@ const MessageInput = () => {
           </span>
         </div>
       )}
+
       {/* Voice Recorder Overlay */}
       {isRecordingVoice ? (
         <VoiceRecorder
@@ -213,24 +344,48 @@ const MessageInput = () => {
         />
       ) : (
         <>
-          {/* Upload Error Banner */}
+          {/* Upload Error Banner with Retry (Requirement 13) */}
           {uploadError && (
-            <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-600 dark:text-rose-400 animate-slide-up">
-              <span>{uploadError}</span>
-              <button
-                onClick={() => setUploadError('')}
-                className="p-1 hover:text-rose-800 dark:hover:text-rose-200"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+            <div className="flex items-center justify-between px-3 py-2 mb-2 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-xs text-rose-600 dark:text-rose-400 animate-slide-up">
+              <div className="flex items-center space-x-2 flex-1 pr-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{uploadError}</span>
+              </div>
+              <div className="flex items-center space-x-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  className="flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-medium text-[11px]"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Retry</span>
+                </button>
+                <button
+                  onClick={() => setUploadError('')}
+                  className="p-1 hover:text-rose-800 dark:hover:text-rose-200"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
 
           {/* Upload Progress Banner */}
           {isUploading && (
-            <div className="flex items-center space-x-2 px-3 py-1.5 mb-2 bg-brand-500/10 border border-brand-500/20 rounded-xl text-xs text-brand-600 dark:text-brand-400 font-medium animate-pulse">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Uploading attachment...</span>
+            <div className="px-3 py-2 mb-2 bg-brand-500/10 border border-brand-500/20 rounded-2xl space-y-1.5 animate-pulse">
+              <div className="flex items-center justify-between text-xs font-semibold text-brand-600 dark:text-brand-400">
+                <span className="flex items-center space-x-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Uploading image to server...</span>
+                </span>
+                <span>{uploadProgress}%</span>
+              </div>
+              <div className="w-full bg-slate-200 dark:bg-dark-border rounded-full h-1 overflow-hidden">
+                <div
+                  className="bg-brand-600 h-1 rounded-full transition-all duration-300"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
             </div>
           )}
 
@@ -254,29 +409,45 @@ const MessageInput = () => {
             </div>
           )}
 
-          {/* Pending Attachments preview */}
-          {attachments.length > 0 && (
+          {/* PRE-SEND IMAGE & ATTACHMENT PREVIEWS (Requirement 7) */}
+          {pendingFiles.length > 0 && (
             <div className="flex items-center space-x-2 mb-2 overflow-x-auto pb-1">
-              {attachments.map((att, idx) => (
+              {pendingFiles.map((item, idx) => (
                 <div
                   key={idx}
-                  className="relative flex items-center space-x-2 px-3 py-1.5 bg-slate-100 dark:bg-dark-hover rounded-xl border border-slate-200 dark:border-dark-border text-xs max-w-[200px]"
+                  className="relative group flex items-center space-x-2.5 p-1.5 pr-3 bg-slate-100 dark:bg-dark-hover rounded-2xl border border-slate-200 dark:border-dark-border text-xs max-w-[240px] shadow-xs flex-shrink-0 animate-scale-in"
                 >
-                  {att.fileType === 'image' ? (
-                    <img
-                      src={att.url}
-                      alt={att.name}
-                      className="w-7 h-7 rounded-lg object-cover"
-                    />
+                  {item.isImage ? (
+                    <div className="relative w-12 h-12 rounded-xl overflow-hidden bg-black flex-shrink-0 border border-slate-300 dark:border-dark-border">
+                      <img
+                        src={item.previewUrl}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
                   ) : (
-                    <FileText className="w-5 h-5 text-brand-500" />
+                    <div className="w-10 h-10 rounded-xl bg-brand-500/10 text-brand-600 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-5 h-5" />
+                    </div>
                   )}
-                  <span className="truncate flex-1 font-medium">{att.name}</span>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-slate-800 dark:text-white text-xs">
+                      {item.name}
+                    </p>
+                    <p className="text-[10px] text-slate-400 font-mono">
+                      {formatFileSize(item.size)}
+                    </p>
+                  </div>
+
                   <button
-                    onClick={() => removeAttachment(idx)}
-                    className="text-slate-400 hover:text-rose-500"
+                    type="button"
+                    disabled={isUploading}
+                    onClick={() => removePendingFile(idx)}
+                    className="p-1 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors disabled:opacity-40"
+                    title="Remove attachment"
                   >
-                    <X className="w-3.5 h-3.5" />
+                    <X className="w-4 h-4" />
                   </button>
                 </div>
               ))}
@@ -288,8 +459,10 @@ const MessageInput = () => {
             {/* Attachment Button & Menu */}
             <div className="relative" ref={attachMenuRef}>
               <button
+                type="button"
+                disabled={isUploading}
                 onClick={() => setShowAttachMenu(!showAttachMenu)}
-                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors disabled:opacity-50"
                 title="Attach file"
               >
                 <Paperclip className="w-5 h-5" />
@@ -305,7 +478,7 @@ const MessageInput = () => {
               <input
                 type="file"
                 ref={cameraInputRef}
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/gif"
                 capture="environment"
                 onChange={handleFileSelect}
                 className="hidden"
@@ -314,6 +487,7 @@ const MessageInput = () => {
               {showAttachMenu && (
                 <div className="absolute bottom-full mb-2 left-0 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl p-2 w-48 space-y-1 animate-slide-up z-30 text-xs font-medium text-slate-700 dark:text-slate-200">
                   <button
+                    type="button"
                     onClick={() => {
                       if (cameraInputRef.current) {
                         cameraInputRef.current.click();
@@ -327,9 +501,13 @@ const MessageInput = () => {
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => {
-                      fileInputRef.current.accept = 'image/*';
-                      fileInputRef.current.click();
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = 'image/jpeg,image/png,image/webp,image/gif';
+                        fileInputRef.current.click();
+                      }
+                      setShowAttachMenu(false);
                     }}
                     className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
                   >
@@ -338,9 +516,13 @@ const MessageInput = () => {
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => {
-                      fileInputRef.current.accept = 'video/*';
-                      fileInputRef.current.click();
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = 'video/mp4,video/webm,video/quicktime';
+                        fileInputRef.current.click();
+                      }
+                      setShowAttachMenu(false);
                     }}
                     className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
                   >
@@ -349,9 +531,13 @@ const MessageInput = () => {
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => {
-                      fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip';
-                      fileInputRef.current.click();
+                      if (fileInputRef.current) {
+                        fileInputRef.current.accept = '.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip';
+                        fileInputRef.current.click();
+                      }
+                      setShowAttachMenu(false);
                     }}
                     className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
                   >
@@ -365,8 +551,10 @@ const MessageInput = () => {
             {/* Emoji Picker Button & Popover */}
             <div className="relative" ref={emojiPickerRef}>
               <button
+                type="button"
+                disabled={isUploading}
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-amber-500 dark:text-dark-muted dark:hover:text-amber-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-amber-500 dark:text-dark-muted dark:hover:text-amber-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors disabled:opacity-50"
                 title="Insert emoji"
               >
                 <Smile className="w-5 h-5" />
@@ -383,6 +571,7 @@ const MessageInput = () => {
                         {emojis.map((emoji) => (
                           <button
                             key={emoji}
+                            type="button"
                             onClick={() => {
                               setText((prev) => prev + emoji);
                               setShowEmojiPicker(false);
@@ -404,22 +593,28 @@ const MessageInput = () => {
               <textarea
                 ref={textareaRef}
                 value={text}
+                disabled={isUploading}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
-                placeholder="Type a message..."
+                placeholder={
+                  pendingFiles.length > 0
+                    ? 'Add a caption for your image...'
+                    : 'Type a message...'
+                }
                 rows={1}
                 style={{
                   backgroundColor: 'var(--chat-input, #f1f5f9)',
                   color: 'var(--chat-input-text, #0f172a)',
                   borderColor: 'var(--chat-border, transparent)',
                 }}
-                className="w-full px-4 py-2.5 rounded-2xl text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 placeholder-slate-400 dark:placeholder-dark-muted resize-none max-h-28 transition-all"
+                className="w-full px-4 py-2.5 rounded-2xl text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 placeholder-slate-400 dark:placeholder-dark-muted resize-none max-h-28 transition-all disabled:opacity-60"
               />
             </div>
 
-            {/* Mic / Send button */}
-            {text.trim() || attachments.length > 0 ? (
+            {/* Send / Mic button */}
+            {text.trim() || pendingFiles.length > 0 ? (
               <button
+                type="button"
                 onClick={handleSend}
                 disabled={isUploading}
                 style={{
@@ -436,6 +631,7 @@ const MessageInput = () => {
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => setIsRecordingVoice(true)}
                 className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-dark-hover hover:bg-brand-500/15 text-slate-500 dark:text-dark-muted hover:text-brand-500 flex items-center justify-center transition-all active:scale-95"
                 title="Record voice note"

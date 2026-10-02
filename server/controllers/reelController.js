@@ -145,7 +145,7 @@ const getSavedReels = async (req, res, next) => {
 // @access  Private
 const createReel = async (req, res, next) => {
   try {
-    const { thumbnail, caption, hashtags, audio } = req.body;
+    const { thumbnail, thumbnailPublicId, videoPublicId, caption, hashtags, audio } = req.body;
     const video = req.body.video || req.body.videoUrl;
 
     if (!video) {
@@ -163,7 +163,9 @@ const createReel = async (req, res, next) => {
     const reel = await Reel.create({
       author: req.user._id,
       video,
+      videoPublicId: videoPublicId || '',
       thumbnail: thumbnail || '',
+      thumbnailPublicId: thumbnailPublicId || '',
       caption: caption || '',
       hashtags: tags,
       audio: audio || { title: 'Original Audio', artist: req.user.fullName || req.user.username },
@@ -184,6 +186,10 @@ const createReel = async (req, res, next) => {
       },
     });
   } catch (error) {
+    const urls = [req.body?.thumbnail, req.body?.video || req.body?.videoUrl].filter(Boolean);
+    if (urls.length > 0) {
+      await cleanupMedia(urls, req.user._id).catch(() => {});
+    }
     next(error);
   }
 };

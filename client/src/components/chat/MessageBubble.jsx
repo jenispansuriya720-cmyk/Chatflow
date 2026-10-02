@@ -32,11 +32,13 @@ const MessageBubble = ({
   onForward,
   isGroup = false,
   highlight = false,
+  isFirstInGroup = true,
+  isLastInGroup = true,
 }) => {
   const { user } = useAuth();
   const { setReplyingTo, reactToMessage, editMessage, deleteMessage } = useChat();
 
-  // Strict ownership check (Requirement 2 & 10)
+  // Strict ownership check
   const isOwn = Boolean(
     user?._id &&
       (message.sender?._id || message.senderId || message.sender)?.toString() ===
@@ -113,33 +115,61 @@ const MessageBubble = ({
     );
   };
 
+  // Modern bubble corner geometry based on sender and burst grouping
+  const getBubbleCorners = () => {
+    if (isFirstInGroup && isLastInGroup) return 'bubble-group-first-last rounded-2xl';
+    if (isFirstInGroup && !isLastInGroup) return 'bubble-group-first rounded-2xl';
+    if (!isFirstInGroup && !isLastInGroup) return 'bubble-group-middle rounded-2xl';
+    return 'bubble-group-last rounded-2xl';
+  };
+
+  // Genuine shared post/reel check (never show on normal messages)
+  const isSharedMedia =
+    (message.type === 'shared_post' ||
+      message.type === 'shared_reel' ||
+      message.type === 'shared_story') &&
+    message.sharedContent &&
+    Boolean(
+      message.sharedContent.mediaUrl ||
+        message.sharedContent.thumbnailUrl ||
+        message.sharedContent.titleOrCaption
+    );
+
   return (
     <>
       <div
         id={`msg-${message._id}`}
-        className={`group relative flex items-end space-x-2 my-1 px-4 chat-message-row transition-all duration-300 ${
+        className={`group relative flex items-start space-x-2 px-3 sm:px-4 chat-message-row transition-all duration-200 ${
           isOwn ? 'justify-end' : 'justify-start'
-        } ${highlight ? 'bg-brand-500/10 rounded-2xl py-2 ring-1 ring-brand-500/30' : ''}`}
+        } ${isFirstInGroup ? 'mt-3 sm:mt-3.5' : 'mt-0.5'} ${
+          highlight ? 'bg-brand-500/10 rounded-2xl py-2 ring-1 ring-brand-500/30' : ''
+        }`}
       >
-        {/* Sender Avatar for received messages in direct/group */}
+        {/* Sender Avatar for received messages (only shown on the first message of consecutive bursts) */}
         {!isOwn && (
-          <Avatar
-            src={message.sender?.profilePicture}
-            name={message.sender?.fullName || message.sender?.username}
-            size="sm"
-            className="mb-1 flex-shrink-0"
-          />
+          <div className="w-8 flex-shrink-0 flex items-start self-start pt-0.5">
+            {isFirstInGroup ? (
+              <Avatar
+                src={message.sender?.profilePicture}
+                name={message.sender?.fullName || message.sender?.username}
+                size="sm"
+                className="w-8 h-8 rounded-full object-cover shadow-xs flex-shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 flex-shrink-0" />
+            )}
+          </div>
         )}
 
         {/* Message Content Container */}
         <div
-          className={`relative max-w-[85%] sm:max-w-[70%] md:max-w-[60%] flex flex-col ${
+          className={`relative max-w-[85%] sm:max-w-[75%] md:max-w-[65%] flex flex-col ${
             isOwn ? 'items-end' : 'items-start'
           }`}
         >
-          {/* Sender Name in Group */}
-          {!isOwn && isGroup && (
-            <span className="text-[11px] font-semibold text-brand-600 dark:text-brand-400 mb-1 px-1">
+          {/* Sender Name in Group (only shown on the first message in the burst) */}
+          {!isOwn && isGroup && isFirstInGroup && (
+            <span className="text-[11px] font-bold text-brand-600 dark:text-brand-400 mb-1 px-1 select-none">
               {message.sender?.fullName || message.sender?.username}
             </span>
           )}
@@ -147,19 +177,29 @@ const MessageBubble = ({
           {/* Quoted Reply if any */}
           {message.replyTo && !message.isDeleted && (
             <div
-              className={`w-full mb-1 px-3 py-1.5 rounded-xl border-l-4 text-xs select-none ${
+              onClick={() => {
+                const targetId = message.replyTo._id;
+                if (targetId) {
+                  const el = document.getElementById(`msg-${targetId}`);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+              }}
+              className={`w-full mb-1.5 px-3 py-1.5 rounded-xl border-l-4 text-xs select-none cursor-pointer transition-opacity hover:opacity-90 ${
                 isOwn
-                  ? 'bg-brand-700/20 border-brand-400 text-slate-200'
-                  : 'bg-slate-200 dark:bg-dark-hover border-brand-500 text-slate-700 dark:text-slate-300'
+                  ? 'bg-black/20 border-white/80 text-white/90'
+                  : 'bg-slate-100 dark:bg-dark-hover border-brand-500 text-slate-700 dark:text-slate-300'
               }`}
             >
-              <span className="font-semibold block text-[11px]">
-                {message.replyTo.sender?.fullName || 'Replied Message'}
+              <span className="font-bold block text-[11px] truncate">
+                {message.replyTo.sender?.fullName || message.replyTo.sender?.username || 'Replied Message'}
               </span>
               <span className="truncate block opacity-85 text-[11px]">
                 {message.replyTo.isDeleted
                   ? 'Original message was deleted'
-                  : message.replyTo.text || 'Attachment'}
+                  : message.replyTo.text ||
+                    (message.replyTo.imageUrl || message.replyTo.attachments?.length
+                      ? '📷 Photo'
+                      : 'Attachment')}
               </span>
             </div>
           )}
@@ -167,7 +207,7 @@ const MessageBubble = ({
           {/* Message Bubble Card */}
           <div
             onClick={(e) => {
-              if (e.target.closest('button, a, video, audio, input, textarea')) return;
+              if (e.target.closest('button, a, video, audio, input, textarea, img')) return;
               if (window.innerWidth < 768 && !message.isDeleted && !isEditing) {
                 setMobileSheetOpen(true);
               }
@@ -178,19 +218,20 @@ const MessageBubble = ({
                 setMobileSheetOpen(true);
               }
             }}
-            className={`relative px-4 py-2.5 rounded-2xl shadow-sm text-sm break-words transition-all duration-200 cursor-pointer md:cursor-default ${
+            className={`relative px-4 py-2.5 shadow-xs text-sm break-words transition-all duration-200 cursor-pointer md:cursor-default ${getBubbleCorners()} ${
               message.isDeleted
-                ? 'italic text-slate-400 bg-slate-100 dark:bg-dark-hover border border-dashed border-slate-300 dark:border-dark-border rounded-br-sm'
+                ? 'italic text-slate-400 bg-slate-100 dark:bg-dark-hover border border-dashed border-slate-300 dark:border-dark-border'
                 : isOwn
-                ? 'chat-bubble-out text-white rounded-br-sm shadow-md'
-                : 'chat-bubble-in text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-dark-border rounded-bl-sm'
+                ? 'chat-bubble-out text-white shadow-sm'
+                : 'chat-bubble-in text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-dark-border shadow-xs'
             }`}
             style={
               message.isDeleted
                 ? {}
                 : isOwn
                 ? {
-                    background: 'var(--chat-outgoing, linear-gradient(135deg, #4f46e5 0%, #6366f1 100%))',
+                    background:
+                      'var(--chat-outgoing, linear-gradient(135deg, #4f46e5 0%, #6366f1 100%))',
                     color: 'var(--chat-outgoing-text, #ffffff)',
                   }
                 : {
@@ -200,7 +241,7 @@ const MessageBubble = ({
                   }
             }
           >
-            {/* Deleted state (Requirements 11 & 26) */}
+            {/* Deleted state */}
             {message.isDeleted ? (
               <div className="flex items-center space-x-2 py-0.5 select-none">
                 <AlertCircle className="w-4 h-4 opacity-70" />
@@ -233,49 +274,86 @@ const MessageBubble = ({
               </div>
             ) : (
               <>
-                {/* Media Attachments */}
-                {message.attachments && message.attachments.length > 0 && (
-                  <div className="space-y-2 mb-2">
-                    {message.attachments.map((att, idx) => (
-                      <div key={idx} className="rounded-xl overflow-hidden">
-                        {att.fileType === 'image' ? (
+                {/* Media Attachments & Direct Image (Rendered directly inside bubble without @creator POST) */}
+                {((message.attachments && message.attachments.length > 0) || message.imageUrl) && (
+                  <div className="space-y-1.5 mb-1.5">
+                    {/* Direct Image URL */}
+                    {message.imageUrl &&
+                      (!message.attachments ||
+                        !message.attachments.some((a) => a.url === message.imageUrl)) && (
+                        <div className="rounded-xl overflow-hidden shadow-xs">
                           <img
-                            src={att.url}
-                            alt={att.name || 'Photo'}
-                            onClick={() => onOpenMedia && onOpenMedia(att)}
-                            className="max-h-72 w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+                            src={message.imageUrl}
+                            alt="Photo"
+                            onClick={() =>
+                              onOpenMedia &&
+                              onOpenMedia({
+                                url: message.imageUrl,
+                                fileType: 'image',
+                                name: 'Photo',
+                              })
+                            }
+                            className="max-h-80 w-auto max-w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
                             loading="lazy"
                           />
-                        ) : att.fileType === 'video' ? (
-                          <video
-                            src={att.url}
-                            controls
-                            className="max-h-72 w-full rounded-xl"
-                          />
-                        ) : (
-                          <a
-                            href={att.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            download={att.name}
-                            className={`flex items-center space-x-3 p-3 rounded-xl transition-colors ${
-                              isOwn
-                                ? 'bg-black/20 hover:bg-black/30'
-                                : 'bg-slate-100 dark:bg-dark-hover hover:bg-slate-200'
-                            }`}
-                          >
-                            <FileText className="w-6 h-6 flex-shrink-0 text-brand-400" />
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-semibold truncate">{att.name}</p>
-                              <p className="text-[10px] opacity-75">
-                                {Math.round((att.size || 0) / 1024)} KB
-                              </p>
-                            </div>
-                            <Download className="w-4 h-4 flex-shrink-0 opacity-75" />
-                          </a>
-                        )}
-                      </div>
-                    ))}
+                        </div>
+                      )}
+
+                    {message.attachments &&
+                      message.attachments.map((att, idx) => {
+                        const isImg =
+                          att.fileType === 'image' ||
+                          att.mimeType?.startsWith('image/') ||
+                          Boolean(att.url?.match(/\.(jpeg|jpg|gif|png|webp)/i));
+
+                        return (
+                          <div key={idx} className="rounded-xl overflow-hidden shadow-xs">
+                            {isImg ? (
+                              <img
+                                src={att.url}
+                                alt={att.name || 'Photo'}
+                                onClick={() =>
+                                  onOpenMedia &&
+                                  onOpenMedia({
+                                    url: att.url,
+                                    fileType: 'image',
+                                    name: att.name || 'Photo',
+                                  })
+                                }
+                                className="max-h-80 w-auto max-w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+                                loading="lazy"
+                              />
+                            ) : att.fileType === 'video' ? (
+                              <video
+                                src={att.url}
+                                controls
+                                className="max-h-80 w-full rounded-xl"
+                              />
+                            ) : (
+                              <a
+                                href={att.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                download={att.name}
+                                className={`flex items-center space-x-3 p-3 rounded-xl transition-colors ${
+                                  isOwn
+                                    ? 'bg-black/20 hover:bg-black/30'
+                                    : 'bg-slate-100 dark:bg-dark-hover hover:bg-slate-200'
+                                }`}
+                              >
+                                <FileText className="w-6 h-6 flex-shrink-0 text-brand-400" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-semibold truncate">{att.name}</p>
+                                  <p className="text-[10px] opacity-75">
+                                    {Math.round((att.size || 0) / 1024)} KB
+                                  </p>
+                                </div>
+                                <Download className="w-4 h-4 flex-shrink-0 opacity-75" />
+                              </a>
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 )}
 
@@ -328,51 +406,34 @@ const MessageBubble = ({
                     </div>
                   )}
 
-                {/* Shared Post / Reel / Story Card (Requirement 24) */}
-                {message.sharedContent && (
+                {/* Shared Post / Reel / Story Card (Only for genuine shared post items with valid media/title) */}
+                {isSharedMedia && (
                   <div
-                    className={`rounded-2xl overflow-hidden my-2 border p-3 select-none ${
+                    className={`rounded-2xl overflow-hidden my-1.5 border select-none ${
                       isOwn
-                        ? 'bg-black/20 border-white/20 text-white'
-                        : 'bg-slate-50 dark:bg-dark-hover border-slate-200 dark:border-dark-border text-slate-800 dark:text-slate-100'
+                        ? 'bg-black/25 border-white/20 text-white'
+                        : 'bg-slate-50 dark:bg-dark-card border-slate-200 dark:border-dark-border text-slate-800 dark:text-slate-100'
                     }`}
                   >
-                    {message.sharedContent.isUnavailable ? (
-                      <div className="flex items-center space-x-2 py-2 text-rose-400 text-xs font-medium">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 text-rose-400" />
-                        <span>This content is no longer available.</span>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-[11px] font-bold">
-                            @{message.sharedContent.authorUsername || 'creator'}
-                          </span>
-                          <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-full bg-brand-500/20 text-brand-300">
-                            {message.sharedContent.contentType || 'post'}
-                          </span>
-                        </div>
-                        {message.sharedContent.mediaUrl && (
-                          <img
-                            src={message.sharedContent.mediaUrl}
-                            alt="Shared thumbnail"
-                            className="w-full max-h-48 object-cover rounded-xl"
-                            loading="lazy"
-                          />
-                        )}
-                        {message.sharedContent.titleOrCaption && (
-                          <p className="text-xs line-clamp-2 leading-relaxed opacity-90">
-                            {message.sharedContent.titleOrCaption}
-                          </p>
-                        )}
-                      </div>
+                    {(message.sharedContent.mediaUrl || message.sharedContent.thumbnailUrl) && (
+                      <img
+                        src={message.sharedContent.mediaUrl || message.sharedContent.thumbnailUrl}
+                        alt="Shared media"
+                        className="w-full max-h-60 object-cover rounded-t-xl"
+                        loading="lazy"
+                      />
+                    )}
+                    {message.sharedContent.titleOrCaption && (
+                      <p className="p-2.5 text-xs line-clamp-3 leading-relaxed">
+                        {message.sharedContent.titleOrCaption}
+                      </p>
                     )}
                   </div>
                 )}
 
                 {/* Poll Display */}
                 {message.pollData?.question && (
-                  <div className="rounded-2xl border border-white/20 p-3 my-2 space-y-2 bg-black/15 text-xs">
+                  <div className="rounded-2xl border border-white/20 p-3 my-1.5 space-y-2 bg-black/15 text-xs">
                     <p className="font-bold">{message.pollData.question}</p>
                     <div className="space-y-1.5">
                       {(message.pollData.options || []).map((opt, idx) => (
@@ -392,7 +453,7 @@ const MessageBubble = ({
 
                 {/* Event Display */}
                 {message.eventData?.title && (
-                  <div className="rounded-2xl border border-brand-400/40 p-3 my-2 bg-brand-500/10 space-y-1 text-xs">
+                  <div className="rounded-2xl border border-brand-400/40 p-3 my-1.5 bg-brand-500/10 space-y-1 text-xs">
                     <p className="font-bold text-brand-300">📅 {message.eventData.title}</p>
                     {message.eventData.location && (
                       <p className="text-[11px] opacity-80">📍 {message.eventData.location}</p>
@@ -400,19 +461,19 @@ const MessageBubble = ({
                   </div>
                 )}
 
-                {/* Text content */}
+                {/* Actual Real Message Text (Clean, no @creator POST prefix) */}
                 {message.text && (
-                  <p className="whitespace-pre-wrap leading-relaxed select-text chat-message-text">
+                  <p className="whitespace-pre-wrap leading-relaxed select-text chat-message-text break-words text-[13.5px] sm:text-sm">
                     {message.text}
                   </p>
                 )}
               </>
             )}
 
-            {/* Timestamp and Read Status (Requirement 5) */}
+            {/* Subtle Timestamp and Real Delivery / Read Status */}
             <div
-              className={`flex items-center justify-end space-x-1.5 mt-1 text-[10px] select-none ${
-                isOwn ? 'opacity-90' : 'opacity-75'
+              className={`flex items-center justify-end space-x-1.5 mt-1 text-[11px] select-none ${
+                isOwn ? 'opacity-90' : 'opacity-70'
               }`}
               style={{
                 color: isOwn
@@ -420,22 +481,39 @@ const MessageBubble = ({
                   : 'var(--chat-timestamp, #94a3b8)',
               }}
             >
-              {message.isEdited && !message.isDeleted && <span className="opacity-75">edited</span>}
-              <span>{time}</span>
+              {message.isEdited && !message.isDeleted && (
+                <span className="opacity-75 italic text-[10px]">edited</span>
+              )}
+              <span className="font-medium">{time}</span>
 
               {isOwn && !message.isDeleted && (
-                <span className="ml-1 inline-flex items-center space-x-1">
+                <span className="ml-1 inline-flex items-center space-x-0.5">
                   {message.status === 'sending' ? (
-                    <Clock className="w-3.5 h-3.5 opacity-70 animate-pulse" title="Sending..." />
+                    <Clock className="w-3 h-3 opacity-70 animate-pulse" title="Sending..." />
                   ) : message.status === 'read' ? (
-                    <span className="flex items-center space-x-0.5 text-cyan-300 font-medium">
-                      <CheckCheck className="w-3.5 h-3.5 drop-shadow-xs" />
-                      <span className="text-[9px]">Read</span>
+                    <span
+                      className="inline-flex items-center space-x-0.5 text-cyan-300 font-semibold"
+                      title="Read"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5 stroke-[2.5]" />
+                      <span className="text-[9.5px]">Read</span>
                     </span>
                   ) : message.status === 'delivered' ? (
-                    <CheckCheck className="w-3.5 h-3.5 opacity-80 text-slate-200" title="Delivered" />
+                    <span
+                      className="inline-flex items-center space-x-0.5 text-white/80"
+                      title="Delivered"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5 stroke-[2]" />
+                      <span className="text-[9.5px]">Delivered</span>
+                    </span>
                   ) : (
-                    <Check className="w-3.5 h-3.5 opacity-70 text-slate-200" title="Sent" />
+                    <span
+                      className="inline-flex items-center space-x-0.5 text-white/80"
+                      title="Sent"
+                    >
+                      <Check className="w-3.5 h-3.5 stroke-[2]" />
+                      <span className="text-[9.5px]">Sent</span>
+                    </span>
                   )}
                 </span>
               )}
@@ -467,10 +545,10 @@ const MessageBubble = ({
           )}
         </div>
 
-        {/* Hover Action Bar (Requirements 10 & 30) */}
+        {/* Hover Action Bar (Desktop) */}
         {!message.isDeleted && (
           <div
-            className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex items-center space-x-1 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl shadow-md p-1 z-10 ${
+            className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hidden md:flex items-center space-x-1 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl shadow-md p-1 z-10 ${
               isOwn ? 'right-full mr-2' : 'left-full ml-2'
             }`}
           >
@@ -544,7 +622,7 @@ const MessageBubble = ({
                     <span>Forward</span>
                   </button>
 
-                  {/* OWN MESSAGE ACTIONS ONLY (Requirement 10) */}
+                  {/* OWN MESSAGE ACTIONS ONLY */}
                   {isOwn ? (
                     <>
                       {message.text && (
@@ -574,7 +652,7 @@ const MessageBubble = ({
                       </button>
                     </>
                   ) : (
-                    /* OTHER USER'S MESSAGE: NO DELETE OR EDIT, ONLY REPORT (Requirement 10 & 30) */
+                    /* OTHER USER'S MESSAGE: NO DELETE OR EDIT, ONLY REPORT */
                     <>
                       <div className="border-t border-slate-100 dark:border-dark-border my-1" />
 
@@ -597,7 +675,7 @@ const MessageBubble = ({
         )}
       </div>
 
-      {/* Delete Confirmation Modal (Requirements 11 & 31) */}
+      {/* Delete Confirmation Modal */}
       <DeleteConfirmModal
         isOpen={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}

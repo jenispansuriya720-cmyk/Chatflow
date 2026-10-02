@@ -6,10 +6,16 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "node test/api.test.js"
+    "test": "node test/shared_chat_theme_e2e.test.js",
+    "test:theme": "node test/shared_chat_theme_e2e.test.js",
+    "test:upload": "node test/image_upload_system_e2e.test.js",
+    "test:api": "node test/api.test.js",
+    "test:social": "node test/social.test.js",
+    "test:all": "node test/api.test.js && node test/social.test.js && node test/image_upload_system_e2e.test.js && node test/shared_chat_theme_e2e.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "cloudinary": "^2.11.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

@@ -1,83 +1,60 @@
 const mongoose = require('mongoose');
-const UserChatTheme = require('../models/UserChatTheme');
 const Conversation = require('../models/Conversation');
 const UserSettings = require('../models/UserSettings');
 
-// Color / CSS validation regex: safe hex (#fff, #ffffff, #ffffff80), rgb, rgba, hsl, linear-gradient
-const SAFE_COLOR_REGEX =
-  /^#([0-9a-fA-F]{3,8})$|^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$|^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*[\d.]+\s*\)$|^hsl\(\s*\d+\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*\)$|^linear-gradient\([^<>"'`;]+\)$/;
+const VALID_THEMES = [
+  'default',
+  'blue',
+  'purple',
+  'green',
+  'midnight',
+  'ocean',
+  'sunset',
+  'lavender',
+  'rose',
+  'forest',
+  'sky',
+  'minimal',
+  'neon',
+  'coffee',
+  'aurora',
+];
 
-const sanitizeColor = (val, fallback = '#ffffff') => {
-  if (!val || typeof val !== 'string') return fallback;
-  const trimmed = val.trim();
-  if (
-    trimmed.includes('javascript:') ||
-    trimmed.includes('expression(') ||
-    trimmed.includes('url(') ||
-    trimmed.includes('eval(') ||
-    trimmed.includes('<') ||
-    trimmed.includes('>')
-  ) {
-    return fallback;
-  }
-  return SAFE_COLOR_REGEX.test(trimmed) ? trimmed : fallback;
-};
-
-const sanitizeWallpaper = (url) => {
-  if (!url || typeof url !== 'string') return '';
-  const trimmed = url.trim();
-  if (
-    trimmed.startsWith('javascript:') ||
-    trimmed.startsWith('vbscript:') ||
-    trimmed.includes('<') ||
-    trimmed.includes('>') ||
-    trimmed.includes('"') ||
-    trimmed.includes("'")
-  ) {
-    return '';
-  }
-  if (
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('data:image/') ||
-    trimmed.startsWith('/')
-  ) {
-    return trimmed;
-  }
-  return '';
-};
-
-// @desc    Get user's personal theme for a conversation
+// @desc    Get conversation's shared theme
 // @route   GET /api/conversations/:id/theme
 // @access  Private
 const getConversationTheme = async (req, res) => {
   try {
-    const { id: conversationId } = req.params;
+    const conversationId = req.params.conversationId || req.params.id;
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(conversationId)) {
       return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
-    // Verify user is a participant in this conversation
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      participants: { $in: [userId] },
-    });
-
+    // Verify conversation exists
+    const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    // Verify user is a participant in this conversation
+    const isParticipant = conversation.participants.some(
+      (p) => p.toString() === userId.toString()
+    );
+
+    if (!isParticipant) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. You are not a participant in this conversation.',
       });
     }
 
-    const theme = await UserChatTheme.findOne({ userId, conversationId });
-
     return res.status(200).json({
       success: true,
-      theme: theme || null,
-      isDefault: !theme,
+      conversationId: conversation._id,
+      theme: conversation.theme || 'default',
+      isDefault: !conversation.theme || conversation.theme === 'default',
     });
   } catch (err) {
     console.error('Error fetching conversation theme:', err);
@@ -85,99 +62,66 @@ const getConversationTheme = async (req, res) => {
   }
 };
 
-// @desc    Update or create personal theme for a conversation
-// @route   PUT /api/conversations/:id/theme
+// @desc    Update shared theme for a conversation
+// @route   PUT /api/conversations/:id/theme or PUT /api/conversations/:conversationId/theme
 // @access  Private
 const updateConversationTheme = async (req, res) => {
   try {
-    const { id: conversationId } = req.params;
+    const conversationId = req.params.conversationId || req.params.id;
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(conversationId)) {
       return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
-    // Authorization: Verify user is a participant
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      participants: { $in: [userId] },
-    });
-
+    // Verify conversation exists
+    const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    // Authorization: Verify user is a participant
+    const isParticipant = conversation.participants.some(
+      (p) => p.toString() === userId.toString()
+    );
+
+    if (!isParticipant) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. You are not a participant in this conversation.',
       });
     }
 
-    const {
-      themeType = 'preset',
-      themeId = 'default',
-      bubbleStyle = 'classic',
-      fontSize = 'medium',
-      density = 'comfortable',
-      backgroundEffect = 'none',
-      customTheme = {},
-    } = req.body;
-
-    const sanitizedThemeId = String(themeId).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 40) || 'default';
-
-    const validBubbleStyles = ['classic', 'soft', 'compact', 'minimal'];
-    const validFontSizes = ['small', 'medium', 'large'];
-    const validDensities = ['comfortable', 'compact', 'spacious'];
-    const validEffects = ['none', 'subtle_pattern', 'soft_gradient', 'wallpaper'];
-
-    const safeBubbleStyle = validBubbleStyles.includes(bubbleStyle) ? bubbleStyle : 'classic';
-    const safeFontSize = validFontSizes.includes(fontSize) ? fontSize : 'medium';
-    const safeDensity = validDensities.includes(density) ? density : 'comfortable';
-    const safeBackgroundEffect = validEffects.includes(backgroundEffect) ? backgroundEffect : 'none';
-
-    let safeCustom = {};
-    if (themeType === 'custom' || customTheme) {
-      safeCustom = {
-        background: sanitizeColor(customTheme.background, '#ffffff'),
-        backgroundSecondary: sanitizeColor(customTheme.backgroundSecondary, '#f8fafc'),
-        incomingBubble: sanitizeColor(customTheme.incomingBubble, '#ffffff'),
-        incomingText: sanitizeColor(customTheme.incomingText, '#0f172a'),
-        outgoingBubble: sanitizeColor(customTheme.outgoingBubble, '#4f46e5'),
-        outgoingText: sanitizeColor(customTheme.outgoingText, '#ffffff'),
-        headerBackground: sanitizeColor(customTheme.headerBackground, '#ffffff'),
-        inputBackground: sanitizeColor(customTheme.inputBackground, '#f1f5f9'),
-        inputText: sanitizeColor(customTheme.inputText, '#0f172a'),
-        inputPlaceholder: sanitizeColor(customTheme.inputPlaceholder, '#94a3b8'),
-        primaryAccent: sanitizeColor(customTheme.primaryAccent, '#4f46e5'),
-        secondaryAccent: sanitizeColor(customTheme.secondaryAccent, '#6366f1'),
-        borderColor: sanitizeColor(customTheme.borderColor, '#e2e8f0'),
-        timestampColor: sanitizeColor(customTheme.timestampColor, '#94a3b8'),
-        linkColor: sanitizeColor(customTheme.linkColor, '#3b82f6'),
-        wallpaper: sanitizeWallpaper(customTheme.wallpaper),
-        wallpaperOpacity: Math.min(100, Math.max(20, Number(customTheme.wallpaperOpacity) || 80)),
-      };
+    const themeInput = req.body.theme || req.body.themeId;
+    if (!themeInput || typeof themeInput !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Theme name is required.',
+      });
     }
 
-    const updatedTheme = await UserChatTheme.findOneAndUpdate(
-      { userId, conversationId },
-      {
-        themeType: themeType === 'custom' ? 'custom' : 'preset',
-        themeId: sanitizedThemeId,
-        bubbleStyle: safeBubbleStyle,
-        fontSize: safeFontSize,
-        density: safeDensity,
-        backgroundEffect: safeBackgroundEffect,
-        customTheme: safeCustom,
-      },
-      { new: true, upsert: true, runValidators: true }
-    );
+    const selectedTheme = themeInput.trim().toLowerCase();
+    if (!VALID_THEMES.includes(selectedTheme)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid theme name. Must be one of: ${VALID_THEMES.join(', ')}`,
+      });
+    }
 
-    // Track in recently used themes (up to 6 unique items)
-    if (sanitizedThemeId && sanitizedThemeId !== 'default') {
+    // Save shared theme on Conversation document
+    conversation.theme = selectedTheme;
+    await conversation.save();
+
+    // Track in recently used themes for user settings
+    if (selectedTheme !== 'default') {
       try {
         const settings = await UserSettings.findOne({ userId });
         if (settings) {
-          const recents = (settings.appearance?.chatThemeRecent || []).filter(
-            (id) => id !== sanitizedThemeId
+          if (!settings.appearance) settings.appearance = {};
+          const recents = (settings.appearance.chatThemeRecent || []).filter(
+            (id) => id !== selectedTheme
           );
-          recents.unshift(sanitizedThemeId);
+          recents.unshift(selectedTheme);
           settings.appearance.chatThemeRecent = recents.slice(0, 6);
           await settings.save();
         }
@@ -186,10 +130,28 @@ const updateConversationTheme = async (req, res) => {
       }
     }
 
-    // Strictly personal: do NOT broadcast to conversation socket room!
+    // Real-time broadcast to the entire conversation room (User A + User B)
+    if (req.io) {
+      req.io.to(`conversation:${conversation._id}`).emit('chat:themeUpdated', {
+        conversationId: conversation._id.toString(),
+        theme: conversation.theme,
+      });
+
+      // Also notify individual participant personal rooms to sync conversation list badges
+      conversation.participants.forEach((p) => {
+        const pId = (p._id || p).toString();
+        req.io.to(`user:${pId}`).emit('conversation:themeUpdated', {
+          conversationId: conversation._id.toString(),
+          theme: conversation.theme,
+        });
+      });
+    }
+
     return res.status(200).json({
       success: true,
-      theme: updatedTheme,
+      conversationId: conversation._id,
+      theme: conversation.theme,
+      conversation,
     });
   } catch (err) {
     console.error('Error updating conversation theme:', err);
@@ -202,30 +164,52 @@ const updateConversationTheme = async (req, res) => {
 // @access  Private
 const deleteConversationTheme = async (req, res) => {
   try {
-    const { id: conversationId } = req.params;
+    const conversationId = req.params.conversationId || req.params.id;
     const userId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(conversationId)) {
       return res.status(400).json({ success: false, message: 'Invalid conversation ID' });
     }
 
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      participants: { $in: [userId] },
-    });
-
+    const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
+      return res.status(404).json({ success: false, message: 'Conversation not found' });
+    }
+
+    const isParticipant = conversation.participants.some(
+      (p) => p.toString() === userId.toString()
+    );
+
+    if (!isParticipant) {
       return res.status(403).json({
         success: false,
         message: 'Access denied. You are not a participant in this conversation.',
       });
     }
 
-    await UserChatTheme.findOneAndDelete({ userId, conversationId });
+    conversation.theme = 'default';
+    await conversation.save();
+
+    if (req.io) {
+      req.io.to(`conversation:${conversation._id}`).emit('chat:themeUpdated', {
+        conversationId: conversation._id.toString(),
+        theme: 'default',
+      });
+
+      conversation.participants.forEach((p) => {
+        const pId = (p._id || p).toString();
+        req.io.to(`user:${pId}`).emit('conversation:themeUpdated', {
+          conversationId: conversation._id.toString(),
+          theme: 'default',
+        });
+      });
+    }
 
     return res.status(200).json({
       success: true,
       message: 'Chat theme reset to default',
+      conversationId: conversation._id,
+      theme: 'default',
       isDefault: true,
     });
   } catch (err) {
@@ -304,6 +288,7 @@ const toggleThemeFavorite = async (req, res) => {
 };
 
 module.exports = {
+  VALID_THEMES,
   getConversationTheme,
   updateConversationTheme,
   deleteConversationTheme,

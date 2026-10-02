@@ -206,6 +206,7 @@ const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
       <video
         ref={videoRef}
         src={reel.video}
+        poster={reel.thumbnail || undefined}
         loop
         playsInline
         muted={isMuted}

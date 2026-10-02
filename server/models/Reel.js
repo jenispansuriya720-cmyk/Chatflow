@@ -16,6 +16,14 @@ const reelSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    thumbnailPublicId: {
+      type: String,
+      default: '',
+    },
+    videoPublicId: {
+      type: String,
+      default: '',
+    },
     caption: {
       type: String,
       default: '',

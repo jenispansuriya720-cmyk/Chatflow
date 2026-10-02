@@ -66,6 +66,7 @@ const ChatThemePanel = ({ isOpen, onClose, conversationName = 'Taylor Reed', con
 
   const [hasChanges, setHasChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [savingThemeId, setSavingThemeId] = useState(null);
   const [showDiscardModal, setShowDiscardModal] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
@@ -132,8 +133,8 @@ const ChatThemePanel = ({ isOpen, onClose, conversationName = 'Taylor Reed', con
     addToast('Contrast enhanced for optimal readability', 'info');
   };
 
-  // Select a preset theme
-  const handleSelectPreset = (themeId) => {
+  // Select and immediately apply a preset theme
+  const handleSelectPreset = async (themeId) => {
     const preset = getThemeById(themeId);
     setDraftTheme((prev) => ({
       ...prev,
@@ -141,7 +142,23 @@ const ChatThemePanel = ({ isOpen, onClose, conversationName = 'Taylor Reed', con
       themeId,
       customTheme: { ...preset },
     }));
-    setHasChanges(true);
+    try {
+      setIsSaving(true);
+      setSavingThemeId(themeId);
+      const res = await saveTheme(themeId);
+      if (res.success) {
+        setHasChanges(false);
+        addToast(`Chat theme updated to ${preset.name}`, 'success');
+      } else {
+        addToast(res.message || 'Failed to update theme', 'error');
+      }
+    } catch (err) {
+      console.error('Error applying theme:', err);
+      addToast('Failed to apply theme', 'error');
+    } finally {
+      setIsSaving(false);
+      setSavingThemeId(null);
+    }
   };
 
   // Custom color updater
@@ -522,10 +539,14 @@ const ChatThemePanel = ({ isOpen, onClose, conversationName = 'Taylor Reed', con
                               : 'border-slate-200 dark:border-dark-border bg-white dark:bg-dark-surface text-slate-700 dark:text-slate-300'
                           }`}
                         >
-                          <span
-                            className="w-2.5 h-2.5 rounded-full"
-                            style={{ background: themeObj.outgoingBubble }}
-                          />
+                          {savingThemeId === rId ? (
+                            <Loader2 className="w-3 h-3 animate-spin text-brand-600" />
+                          ) : (
+                            <span
+                              className="w-2.5 h-2.5 rounded-full"
+                              style={{ background: themeObj.outgoingBubble }}
+                            />
+                          )}
                           <span>{themeObj.name}</span>
                         </button>
                       );
@@ -622,13 +643,18 @@ const ChatThemePanel = ({ isOpen, onClose, conversationName = 'Taylor Reed', con
                         </div>
                       </div>
 
-                      {/* Selected check badge */}
-                      {isSelected && (
+                      {/* Selected check badge or loading spinner */}
+                      {savingThemeId === theme.id ? (
+                        <div className="flex items-center space-x-1 text-[10px] font-bold text-brand-600 dark:text-brand-400 pt-0.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>Saving...</span>
+                        </div>
+                      ) : isSelected ? (
                         <div className="flex items-center space-x-1 text-[10px] font-bold text-brand-600 dark:text-brand-400 pt-0.5">
                           <Check className="w-3 h-3 stroke-[3]" />
                           <span>Active</span>
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   );
                 })}
@@ -921,7 +947,7 @@ const ChatThemePanel = ({ isOpen, onClose, conversationName = 'Taylor Reed', con
           <div className="w-full max-w-xs bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl p-5 shadow-2xl space-y-4 text-center animate-scale-in">
             <h4 className="text-sm font-bold text-slate-900 dark:text-white">Reset Chat Theme?</h4>
             <p className="text-xs text-slate-500 dark:text-dark-muted leading-relaxed">
-              This will remove your personal customization for this conversation and return to the default appearance.
+              This will reset the conversation theme to default for all participants in this chat.
             </p>
             <div className="flex items-center space-x-2 pt-1">
               <button

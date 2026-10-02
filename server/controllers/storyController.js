@@ -148,7 +148,7 @@ const createStory = async (req, res, next) => {
   try {
     const media = req.body.media || req.body.mediaUrl || '';
     const text = req.body.text || req.body.caption || '';
-    const { mediaType, mentions, visibility } = req.body;
+    const { mediaType, mentions, visibility, publicId } = req.body;
 
     if (!media && !text) {
       return res.status(400).json({ success: false, message: 'Story media or text is required.' });
@@ -157,6 +157,7 @@ const createStory = async (req, res, next) => {
     const story = await Story.create({
       author: req.user._id,
       media: media || '',
+      publicId: publicId || '',
       mediaType: mediaType || 'image',
       text: text || '',
       mentions: mentions || [],
@@ -182,6 +183,10 @@ const createStory = async (req, res, next) => {
       story: populated,
     });
   } catch (error) {
+    const mediaToClean = req.body?.media || req.body?.mediaUrl;
+    if (mediaToClean) {
+      await cleanupMedia([mediaToClean], req.user._id).catch(() => {});
+    }
     next(error);
   }
 };

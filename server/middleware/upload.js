@@ -25,22 +25,66 @@ const storage = multer.diskStorage({
   },
 });
 
-const fileFilter = (req, file, cb) => {
-  // Allow common image, audio, video, and doc types
-  const allowedExtensions = /jpeg|jpg|png|webp|gif|mp4|webm|mov|mp3|wav|ogg|pdf|doc|docx|xls|xlsx|txt|zip/;
+// Allowed extensions and corresponding MIME types for strict validation
+const ALLOWED_IMAGE_EXTS = /^(jpe?g|png|webp|gif)$/i;
+const ALLOWED_IMAGE_MIMES = /^image\/(jpeg|jpg|pjpeg|png|webp|gif)$/i;
+
+const ALLOWED_MEDIA_EXTS = /^(jpe?g|png|webp|gif|mp4|webm|mov|mp3|wav|ogg|pdf|docx?|xlsx?|txt|zip)$/i;
+
+// Image-only filter (for Posts, Reel covers, Stories, Chat images)
+const imageFileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
   
-  if (allowedExtensions.test(ext) || file.mimetype.startsWith('image/') || file.mimetype.startsWith('audio/') || file.mimetype.startsWith('video/')) {
+  if (!ALLOWED_IMAGE_EXTS.test(ext)) {
+    return cb(
+      new Error('Unsupported file extension. Allowed image formats: JPG, JPEG, PNG, WEBP, GIF.'),
+      false
+    );
+  }
+
+  if (!ALLOWED_IMAGE_MIMES.test(file.mimetype)) {
+    return cb(
+      new Error(`Unsupported image MIME type (${file.mimetype}). Please upload a valid image file.`),
+      false
+    );
+  }
+
+  cb(null, true);
+};
+
+// General media filter (supports images, audio, video, documents)
+const generalFileFilter = (req, file, cb) => {
+  const ext = path.extname(file.originalname).toLowerCase().replace('.', '');
+  
+  if (
+    ALLOWED_MEDIA_EXTS.test(ext) ||
+    file.mimetype.startsWith('image/') ||
+    file.mimetype.startsWith('audio/') ||
+    file.mimetype.startsWith('video/')
+  ) {
     cb(null, true);
   } else {
-    cb(new Error('File format is not supported.'), false);
+    cb(new Error(`File format .${ext} (${file.mimetype}) is not supported.`), false);
   }
 };
 
+// 20MB limit for images, 50MB for general media
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
-  fileFilter: fileFilter,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB max
+  fileFilter: generalFileFilter,
 });
 
+const uploadImageOnly = multer({
+  storage: storage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB max for images
+  fileFilter: imageFileFilter,
+});
+
+upload.upload = upload;
+upload.uploadImageOnly = uploadImageOnly;
+upload.imageFileFilter = imageFileFilter;
+upload.generalFileFilter = generalFileFilter;
+
 module.exports = upload;
+

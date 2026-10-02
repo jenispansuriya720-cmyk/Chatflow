@@ -312,6 +312,60 @@ const initializeSocket = (io) => {
       });
     });
 
+    // Shared Conversation Theme Socket Event
+    const handleUpdateTheme = async ({ conversationId, theme }) => {
+      try {
+        const uid = currentUserId || socket.user?._id;
+        if (!uid || !conversationId || !theme) return;
+        const conv = await Conversation.findOne({
+          _id: conversationId,
+          participants: { $in: [uid] },
+        });
+        if (!conv) return;
+
+        const VALID_THEMES = [
+          'default',
+          'blue',
+          'purple',
+          'green',
+          'midnight',
+          'ocean',
+          'sunset',
+          'lavender',
+          'rose',
+          'forest',
+          'sky',
+          'minimal',
+          'neon',
+          'coffee',
+          'aurora',
+        ];
+        const selectedTheme = theme.toString().toLowerCase().trim();
+        if (!VALID_THEMES.includes(selectedTheme)) return;
+
+        conv.theme = selectedTheme;
+        await conv.save();
+
+        io.to(`conversation:${conversationId}`).emit('chat:themeUpdated', {
+          conversationId: conv._id.toString(),
+          theme: conv.theme,
+        });
+
+        conv.participants.forEach((p) => {
+          const pId = (p._id || p).toString();
+          io.to(`user:${pId}`).emit('conversation:themeUpdated', {
+            conversationId: conv._id.toString(),
+            theme: conv.theme,
+          });
+        });
+      } catch (err) {
+        console.error('[Socket] updateTheme error:', err.message);
+      }
+    };
+
+    socket.on('updateTheme', handleUpdateTheme);
+    socket.on('chat:updateTheme', handleUpdateTheme);
+
     socket.on('post:delete', ({ postId }) => {
       io.emit('post:deleted', { postId });
     });
