@@ -78,6 +78,26 @@ const uploadDir = process.env.VERCEL
   : path.join(__dirname, 'uploads');
 app.use('/uploads', express.static(uploadDir));
 
+// Lazy database connection for serverless/Vercel environments
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    console.error('[Database Connection Middleware Error]:', err.message);
+    next();
+  }
+});
+
+// Root API endpoints
+app.get('/api', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    message: 'ChatFlow API Service is operational.',
+    timestamp: new Date(),
+  });
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -123,4 +143,6 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = { app, server };
+module.exports = app;
+module.exports.app = app;
+module.exports.server = server;
