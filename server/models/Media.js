@@ -23,7 +23,7 @@ const mediaSchema = new mongoose.Schema(
     },
     entityType: {
       type: String,
-      enum: ['post', 'reel', 'story', 'message', 'profile', 'cover', 'general'],
+      enum: ['post', 'reel', 'story', 'message', 'chat', 'profile', 'avatar', 'cover', 'general'],
       default: 'general',
     },
     entityId: {
