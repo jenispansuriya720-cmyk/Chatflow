@@ -102,9 +102,16 @@ const register = async (req, res, next) => {
         to: cleanEmail,
         name: user.fullName || user.username,
         token: rawVerificationToken,
+        req,
       });
     } catch (smtpErr) {
-      console.error('[Auth Register] SMTP send failure:', smtpErr.message);
+      console.error('[Auth Register] SMTP send failure:', {
+        message: smtpErr.message,
+        code: smtpErr.code,
+        command: smtpErr.command,
+        response: smtpErr.response,
+        responseCode: smtpErr.responseCode,
+      });
       // Rollback created user so inconsistent state is avoided
       await User.findByIdAndDelete(user._id);
       return res.status(503).json({
@@ -209,9 +216,16 @@ const resendVerification = async (req, res, next) => {
           to: user.email,
           name: user.fullName || user.username,
           token: rawToken,
+          req,
         });
       } catch (smtpErr) {
-        console.error('[Auth Resend Verification] SMTP error:', smtpErr.message);
+        console.error('[Auth Resend Verification] SMTP error:', {
+          message: smtpErr.message,
+          code: smtpErr.code,
+          command: smtpErr.command,
+          response: smtpErr.response,
+          responseCode: smtpErr.responseCode,
+        });
         return res.status(503).json({
           success: false,
           message: 'Unable to send the email right now. Please try again.',
@@ -261,9 +275,16 @@ const forgotPassword = async (req, res, next) => {
           to: user.email,
           name: user.fullName || user.username,
           token: rawToken,
+          req,
         });
       } catch (smtpErr) {
-        console.error('[Auth Forgot Password] SMTP send failed:', smtpErr.message);
+        console.error('[Auth Forgot Password] SMTP send failed:', {
+          message: smtpErr.message,
+          code: smtpErr.code,
+          command: smtpErr.command,
+          response: smtpErr.response,
+          responseCode: smtpErr.responseCode,
+        });
         return res.status(503).json({
           success: false,
           message: 'Unable to send the email right now. Please try again.',
@@ -664,10 +685,16 @@ const getMe = async (req, res, next) => {
 /**
  * @desc    SMTP Health Check
  * @route   GET /api/auth/smtp-health
- * @access  Private / Protected
+ * @access  Private / Admin
  */
 const getSmtpHealth = async (req, res, next) => {
   try {
+    const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.query.key;
+    const isAuthorized = req.user || (adminKey && adminKey === (process.env.JWT_SECRET || ''));
+    if (!isAuthorized) {
+      return res.status(401).json({ success: false, message: 'Unauthorized access to SMTP health check.' });
+    }
+
     const status = getSmtpStatus();
     const verifyResult = await verifySmtpConnection();
 
@@ -678,6 +705,75 @@ const getSmtpHealth = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+/**
+ * @desc    Test SMTP email sending (Admin diagnostic)
+ * @route   POST /api/auth/test-email
+ * @access  Private / Admin
+ */
+const testSmtpEmail = async (req, res, next) => {
+  try {
+    const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.query.key;
+    const isAuthorized = req.user || (adminKey && adminKey === (process.env.JWT_SECRET || ''));
+    if (!isAuthorized) {
+      return res.status(401).json({ success: false, message: 'Unauthorized: Admin privileges or adminKey required.' });
+    }
+
+    const { to } = req.body;
+    if (!to || !to.includes('@')) {
+      return res.status(400).json({ success: false, message: 'Please provide a valid recipient email ("to").' });
+    }
+
+    const verifyResult = await verifySmtpConnection();
+    if (!verifyResult.success) {
+      return res.status(502).json({
+        success: false,
+        message: 'SMTP connection verification failed.',
+        diagnostics: verifyResult,
+      });
+    }
+
+    const { sendMail } = require('../services/emailService');
+    const sendResult = await sendMail({
+      to,
+      subject: 'ChatFlow Production SMTP Test',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="color: #6366f1;">ChatFlow Production SMTP Test</h2>
+          <p>Congratulations! Your production SMTP mail service is connected and operating successfully.</p>
+          <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
+          <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</p>
+        </div>
+      `,
+      text: `ChatFlow Production SMTP Test\n\nYour production SMTP mail service is connected and operational.\nTimestamp: ${new Date().toISOString()}`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Test email dispatched to ${to}`,
+      result: sendResult,
+    });
+  } catch (error) {
+    console.error('[SMTP Test Email] Failed:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response,
+      responseCode: error.responseCode,
+    });
+    res.status(500).json({
+      success: false,
+      message: 'SMTP test email failed',
+      error: {
+        message: error.message,
+        code: error.code,
+        command: error.command,
+        response: error.response,
+        responseCode: error.responseCode,
+      },
+    });
   }
 };
 
@@ -693,4 +789,5 @@ module.exports = {
   forgotPassword,
   resetPassword,
   getSmtpHealth,
+  testSmtpEmail,
 };
