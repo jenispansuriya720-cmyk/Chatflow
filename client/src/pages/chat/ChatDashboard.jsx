@@ -11,6 +11,7 @@ import MessageList from '../../components/chat/MessageList';
 import MessageInput from '../../components/chat/MessageInput';
 import ConversationInfoDrawer from '../../components/modals/ConversationInfoDrawer';
 import ChatThemePanel from '../../components/chat/theme/ChatThemePanel';
+import PeopleSuggestions from '../../components/chat/PeopleSuggestions';
 
 const ChatConversationArea = ({ onBackToChatList }) => {
   const { activeConversation } = useChat();
@@ -88,10 +89,14 @@ const ChatDashboard = () => {
       if (!activeConversation || activeConversation._id !== conversationId) {
         selectConversation(conversationId);
       }
+    } else {
+      if (activeConversation) {
+        selectConversation(null);
+      }
     }
   }, [conversationId, selectConversation, activeConversation]);
 
-  // Handle mobile selection
+  // Handle selection from chat list
   const handleSelectChat = (conv) => {
     navigate(`/chat/${conv._id}`);
   };
@@ -132,22 +137,8 @@ const ChatDashboard = () => {
             </ChatThemeProvider>
           ) : (
             /* Empty State on Desktop when no chat is open */
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50 dark:bg-dark-surface/30 select-none">
-              <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-brand-600/20 to-indigo-500/20 flex items-center justify-center text-brand-600 dark:text-brand-400 mb-4 shadow-sm">
-                <Sparkles className="w-10 h-10" />
-              </div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                ChatFlow Messenger
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-dark-muted max-w-sm mt-2 leading-relaxed">
-                Select a conversation from the left or connect with new teammates to begin instant, real-time messaging with rich media, voice notes, and reactions.
-              </p>
-              <button
-                onClick={() => navigate('/contacts')}
-                className="mt-6 px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold rounded-2xl shadow-lg shadow-brand-500/25 transition-all active:scale-95"
-              >
-                Explore Contacts
-              </button>
+            <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 overflow-y-auto bg-slate-50/50 dark:bg-dark-surface/30">
+              <PeopleSuggestions layout="full" />
             </div>
           )}
         </div>

@@ -84,6 +84,97 @@ const getUsers = async (req, res, next) => {
   }
 };
 
+// @desc    Get real user suggestions for new accounts / discovery
+// @route   GET /api/users/suggestions
+// @access  Private
+const getUserSuggestions = async (req, res, next) => {
+  try {
+    const currentUserId = req.user._id;
+    const limit = parseInt(req.query.limit) || 15;
+
+    // 1. Determine all excluded user IDs (self, users blocked by self, users who blocked self)
+    const blockedByUsers = await User.find({
+      blockedUsers: currentUserId,
+    }).select('_id').lean();
+    const blockedByIds = blockedByUsers.map((u) => u._id);
+
+    const excludedIds = [
+      currentUserId,
+      ...(req.user.blockedUsers || []),
+      ...blockedByIds,
+    ];
+
+    // 2. Fetch existing follows and connections
+    const [follows, connections] = await Promise.all([
+      Follow.find({ follower: currentUserId }).lean(),
+      Connection.find({
+        $or: [{ requester: currentUserId }, { recipient: currentUserId }],
+      }).lean(),
+    ]);
+
+    const followingMap = new Map();
+    follows.forEach((f) => {
+      followingMap.set(f.following.toString(), f.status);
+    });
+
+    const connectionMap = new Map();
+    connections.forEach((c) => {
+      const otherId =
+        c.requester.toString() === currentUserId.toString()
+          ? c.recipient.toString()
+          : c.requester.toString();
+      connectionMap.set(otherId, c.status);
+    });
+
+    // 3. Find candidates from MongoDB: exclude self and blocked users, require active account
+    const candidateUsers = await User.find({
+      _id: { $nin: excludedIds },
+      isDeleted: { $ne: true },
+      isSuspended: { $ne: true },
+    })
+      .select('_id fullName username profilePicture isOnline bio isPrivate followersCount createdAt')
+      .sort({ isOnline: -1, followersCount: -1, createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    // 4. Transform into clean suggested objects with real profile data
+    const suggestedUsers = candidateUsers.map((u) => {
+      const uId = u._id.toString();
+      const followStatus = followingMap.get(uId);
+      const connectionStatus = connectionMap.get(uId);
+
+      let relationship = 'People you may know';
+      if (connectionStatus === 'accepted') relationship = 'Connected';
+      else if (connectionStatus === 'pending') relationship = 'Pending Connection';
+      else if (followStatus === 'accepted') relationship = 'Following';
+      else if (followStatus === 'pending') relationship = 'Requested';
+
+      return {
+        _id: u._id,
+        fullName: u.fullName,
+        name: u.fullName,
+        username: u.username,
+        profilePicture: u.profilePicture || '',
+        avatar: u.profilePicture || '',
+        isOnline: Boolean(u.isOnline),
+        isFollowing: followStatus === 'accepted',
+        isPending: followStatus === 'pending' || connectionStatus === 'pending',
+        isConnected: connectionStatus === 'accepted',
+        relationship,
+        bio: u.bio || '',
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: suggestedUsers.length,
+      users: suggestedUsers,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Get user by ID
 // @route   GET /api/users/:id
 // @access  Private
@@ -823,6 +914,7 @@ const deleteCoverImage = async (req, res, next) => {
 
 module.exports = {
   getUsers,
+  getUserSuggestions,
   getUserById,
   updateProfile,
   deleteProfilePicture,

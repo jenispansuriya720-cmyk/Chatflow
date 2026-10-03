@@ -16,7 +16,7 @@ const MobileBottomNav = ({ onOpenCreate }) => {
   );
 
   const isHomeActive = location.pathname === '/home' || location.pathname === '/';
-  const isMessagesActive = location.pathname.startsWith('/chats') || location.pathname.startsWith('/chat/');
+  const isMessagesActive = location.pathname.startsWith('/chats') || location.pathname.startsWith('/chat/') || location.pathname.startsWith('/messages');
   const isExploreActive = location.pathname.startsWith('/explore');
   const isProfileActive = location.pathname === '/profile' || location.pathname === `/profile/${user?._id}`;
 
@@ -88,8 +88,13 @@ const MobileBottomNav = ({ onOpenCreate }) => {
       {/* 3. Create (Primary Center Action) */}
       <div className="flex flex-col items-center justify-center flex-1 py-1">
         <button
-          onClick={onOpenCreate}
-          className="w-11 h-11 -mt-2 rounded-2xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-brand-500/35 active:scale-90 transition-transform"
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onOpenCreate?.(e);
+          }}
+          className="w-11 h-11 min-w-[44px] min-h-[44px] -mt-2 rounded-2xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-brand-500/35 active:scale-90 transition-transform touch-manipulation cursor-pointer select-none"
           aria-label="Create Post, Reel, or Story"
           title="Create"
         >

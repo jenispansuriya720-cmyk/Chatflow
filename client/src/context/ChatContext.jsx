@@ -105,6 +105,7 @@ export const ChatProvider = ({ children }) => {
     sharedContent = null,
     pollData = null,
     eventData = null,
+    imageUrl = '',
   }) => {
     if (!activeConversation) return;
 
@@ -115,6 +116,8 @@ export const ChatProvider = ({ children }) => {
     const otherParticipant = activeConversation.type === 'direct'
       ? activeConversation.participants?.find((p) => (p._id || p) !== user?._id)
       : null;
+
+    const resolvedImg = imageUrl || attachments?.find((a) => a.fileType === 'image')?.url || '';
 
     // Optimistic message
     const optimisticMsg = {
@@ -130,6 +133,7 @@ export const ChatProvider = ({ children }) => {
       receiver: otherParticipant?._id || otherParticipant,
       text: text || '',
       type,
+      imageUrl: resolvedImg,
       sharedContent,
       pollData,
       eventData,
@@ -149,12 +153,14 @@ export const ChatProvider = ({ children }) => {
         conversationId: activeConversation._id,
         text,
         type,
+        imageUrl: resolvedImg,
         sharedContent,
         pollData,
         eventData,
         attachments,
         voiceData,
-        replyTo: previousReply ? previousReply._id : undefined,
+        replyTo: previousReply ? (previousReply._id || previousReply) : undefined,
+        replyToMessageId: previousReply ? (previousReply._id || previousReply) : undefined,
         clientMessageId,
       };
 

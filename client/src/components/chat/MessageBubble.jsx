@@ -75,6 +75,34 @@ const MessageBubble = ({
     setMenuOpen(false);
   };
 
+  // Long press timer for mobile (Sections 1, 17)
+  const longPressTimerRef = useRef(null);
+
+  const handleTouchStart = () => {
+    if (message.isDeleted || isEditing) return;
+    longPressTimerRef.current = setTimeout(() => {
+      setMobileSheetOpen(true);
+      if (navigator.vibrate) navigator.vibrate(40);
+    }, 500);
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+    }
+  };
+
+  // Right-click desktop context menu handler (Sections 1, 18)
+  const handleContextMenu = (e) => {
+    if (message.isDeleted || isEditing) return;
+    e.preventDefault();
+    if (window.innerWidth < 768) {
+      setMobileSheetOpen(true);
+    } else {
+      setMenuOpen(true);
+    }
+  };
+
   // Edit save
   const handleSaveEdit = async () => {
     if (!editText.trim()) return;
@@ -174,36 +202,6 @@ const MessageBubble = ({
             </span>
           )}
 
-          {/* Quoted Reply if any */}
-          {message.replyTo && !message.isDeleted && (
-            <div
-              onClick={() => {
-                const targetId = message.replyTo._id;
-                if (targetId) {
-                  const el = document.getElementById(`msg-${targetId}`);
-                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }
-              }}
-              className={`w-full mb-1.5 px-3 py-1.5 rounded-xl border-l-4 text-xs select-none cursor-pointer transition-opacity hover:opacity-90 ${
-                isOwn
-                  ? 'bg-black/20 border-white/80 text-white/90'
-                  : 'bg-slate-100 dark:bg-dark-hover border-brand-500 text-slate-700 dark:text-slate-300'
-              }`}
-            >
-              <span className="font-bold block text-[11px] truncate">
-                {message.replyTo.sender?.fullName || message.replyTo.sender?.username || 'Replied Message'}
-              </span>
-              <span className="truncate block opacity-85 text-[11px]">
-                {message.replyTo.isDeleted
-                  ? 'Original message was deleted'
-                  : message.replyTo.text ||
-                    (message.replyTo.imageUrl || message.replyTo.attachments?.length
-                      ? '📷 Photo'
-                      : 'Attachment')}
-              </span>
-            </div>
-          )}
-
           {/* Message Bubble Card */}
           <div
             onClick={(e) => {
@@ -212,12 +210,10 @@ const MessageBubble = ({
                 setMobileSheetOpen(true);
               }
             }}
-            onContextMenu={(e) => {
-              if (window.innerWidth < 768 && !message.isDeleted && !isEditing) {
-                e.preventDefault();
-                setMobileSheetOpen(true);
-              }
-            }}
+            onTouchStart={handleTouchStart}
+            onTouchEnd={handleTouchEnd}
+            onTouchMove={handleTouchEnd}
+            onContextMenu={handleContextMenu}
             className={`relative px-4 py-2.5 shadow-xs text-sm break-words transition-all duration-200 cursor-pointer md:cursor-default ${getBubbleCorners()} ${
               message.isDeleted
                 ? 'italic text-slate-400 bg-slate-100 dark:bg-dark-hover border border-dashed border-slate-300 dark:border-dark-border'
@@ -274,6 +270,99 @@ const MessageBubble = ({
               </div>
             ) : (
               <>
+                {/* Quoted Replied-To Message Preview Inside Bubble (Sections 11, 12, 13, 14, 15, 16) */}
+                {message.replyTo && (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const targetId = message.replyTo._id || message.replyTo;
+                      if (targetId) {
+                        const el = document.getElementById(`msg-${targetId}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          el.classList.add('reply-highlight-pulse');
+                          setTimeout(() => {
+                            el.classList.remove('reply-highlight-pulse');
+                          }, 2000);
+                        }
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label="View original message"
+                    className={`w-full mb-2 p-2 sm:p-2.5 rounded-xl border-l-[3.5px] select-none cursor-pointer transition-all duration-150 hover:brightness-95 active:scale-[0.99] flex items-center justify-between gap-2.5 overflow-hidden text-left ${
+                      isOwn
+                        ? 'bg-black/20 border-white/90 text-white'
+                        : 'bg-black/[0.04] dark:bg-white/[0.06] text-slate-800 dark:text-slate-100'
+                    }`}
+                    style={
+                      !isOwn
+                        ? {
+                            borderLeftColor: 'var(--chat-accent, #4f46e5)',
+                          }
+                        : {}
+                    }
+                  >
+                    <div className="flex-1 min-w-0">
+                      <span
+                        className={`font-bold block text-xs truncate ${
+                          isOwn ? 'text-white' : 'text-brand-600 dark:text-brand-400'
+                        }`}
+                        style={!isOwn ? { color: 'var(--chat-accent, #4f46e5)' } : {}}
+                      >
+                        {message.replyTo.isDeleted
+                          ? 'Deleted message'
+                          : message.replyTo.sender?.fullName ||
+                            message.replyTo.sender?.username ||
+                            'Replied message'}
+                      </span>
+                      <span className="truncate block text-xs opacity-85 mt-0.5 line-clamp-1">
+                        {message.replyTo.isDeleted ? (
+                          <span className="italic opacity-70">Original message was deleted</span>
+                        ) : message.replyTo.text ? (
+                          message.replyTo.text
+                        ) : message.replyTo.type === 'image' || message.replyTo.imageUrl ? (
+                          'Photo'
+                        ) : message.replyTo.type === 'video' ? (
+                          'Video'
+                        ) : message.replyTo.voiceData?.duration ? (
+                          'Voice note'
+                        ) : message.replyTo.attachments?.length ? (
+                          message.replyTo.attachments[0].name || 'Attachment'
+                        ) : (
+                          'Attachment'
+                        )}
+                      </span>
+                    </div>
+
+                    {/* Thumbnail if replying to image or video */}
+                    {!message.replyTo.isDeleted &&
+                      (message.replyTo.imageUrl ||
+                        message.replyTo.attachments?.some((a) => a.fileType === 'image') ||
+                        message.replyTo.type === 'image') && (
+                        <div className="w-9 h-9 rounded-lg overflow-hidden flex-shrink-0 bg-slate-900 border border-white/20 shadow-xs">
+                          <img
+                            src={
+                              message.replyTo.imageUrl ||
+                              message.replyTo.attachments?.find((a) => a.fileType === 'image')?.url
+                            }
+                            alt="Replied preview"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                    {!message.replyTo.isDeleted &&
+                      (message.replyTo.type === 'video' ||
+                        message.replyTo.attachments?.some((a) => a.fileType === 'video')) &&
+                      !message.replyTo.imageUrl && (
+                        <div className="w-9 h-9 rounded-lg flex-shrink-0 bg-purple-500/20 text-purple-400 flex items-center justify-center text-sm">
+                          🎥
+                        </div>
+                      )}
+                  </div>
+                )}
+
                 {/* Media Attachments & Direct Image (Rendered directly inside bubble without @creator POST) */}
                 {((message.attachments && message.attachments.length > 0) || message.imageUrl) && (
                   <div className="space-y-1.5 mb-1.5">

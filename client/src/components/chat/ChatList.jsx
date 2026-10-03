@@ -5,6 +5,7 @@ import { useChat } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import ChatItem from './ChatItem';
 import { ChatSkeleton } from '../common/LoadingSpinner';
+import PeopleSuggestions from './PeopleSuggestions';
 
 const ChatList = ({ onSelectChat }) => {
   const { conversations, activeConversation, selectConversation, loadingConversations } = useChat();
@@ -139,33 +140,46 @@ const ChatList = ({ onSelectChat }) => {
         {loadingConversations ? (
           <ChatSkeleton />
         ) : filteredConversations.length > 0 ? (
-          filteredConversations.map((conv) => (
-            <ChatItem
-              key={conv._id}
-              conversation={conv}
-              isActive={activeConversation?._id === conv._id}
-              onClick={() => handleChatClick(conv)}
-            />
-          ))
+          <>
+            {filteredConversations.map((conv) => (
+              <ChatItem
+                key={conv._id}
+                conversation={conv}
+                isActive={activeConversation?._id === conv._id}
+                onClick={() => handleChatClick(conv)}
+              />
+            ))}
+            {!searchTerm.trim() && filterTab === 'all' && (
+              <div className="pt-3 pb-2 border-t border-slate-200/60 dark:border-dark-border/40 mt-3">
+                <PeopleSuggestions layout="compact" limit={4} title="People you may know" />
+              </div>
+            )}
+          </>
         ) : (
-          <div className="flex flex-col items-center justify-center h-64 text-center px-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-200 dark:bg-dark-hover flex items-center justify-center text-slate-400 mb-3">
+          <div className="flex flex-col items-center justify-start text-center px-2 py-4">
+            <div className="w-12 h-12 rounded-2xl bg-brand-500/10 text-brand-600 dark:text-brand-400 flex items-center justify-center mb-2.5">
               <MessageSquareDashed className="w-6 h-6" />
             </div>
-            <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              No conversations found
+            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+              {searchTerm ? 'No conversations found' : 'No conversations yet'}
             </h4>
-            <p className="text-xs text-slate-400 dark:text-dark-muted mt-1 max-w-[200px]">
+            <p className="text-xs text-slate-400 dark:text-dark-muted mt-0.5 max-w-[220px]">
               {searchTerm
                 ? 'No chats match your search query.'
-                : 'Start a conversation with a teammate or friend.'}
+                : 'Start chatting with people you know.'}
             </p>
-            <button
-              onClick={() => navigate('/contacts')}
-              className="mt-4 px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white text-xs font-medium rounded-xl shadow-sm transition-colors"
-            >
-              Find People
-            </button>
+            {!searchTerm ? (
+              <div className="w-full mt-3 text-left">
+                <PeopleSuggestions layout="compact" limit={6} title="People you may know" />
+              </div>
+            ) : (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="mt-4 px-3.5 py-1.5 bg-slate-200 dark:bg-dark-hover hover:bg-slate-300 dark:hover:bg-dark-border text-slate-700 dark:text-slate-200 text-xs font-medium rounded-xl transition-colors"
+              >
+                Clear Search
+              </button>
+            )}
           </div>
         )}
       </div>

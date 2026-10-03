@@ -23,6 +23,9 @@ import { useTheme } from '../../context/ThemeContext';
 import { useChat } from '../../context/ChatContext';
 import Avatar from '../common/Avatar';
 import CreateModal from '../modals/CreateModal';
+import CreateStoryModal from '../social/CreateStoryModal';
+import CreatePostModal from '../social/CreatePostModal';
+import CreateReelModal from '../social/CreateReelModal';
 import MobileHeader from './MobileHeader';
 import MobileBottomNav from './MobileBottomNav';
 
@@ -40,6 +43,36 @@ const Sidebar = ({
   const location = useLocation();
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [localCreateStoryOpen, setLocalCreateStoryOpen] = useState(false);
+  const [localCreatePostOpen, setLocalCreatePostOpen] = useState(false);
+  const [localCreateReelOpen, setLocalCreateReelOpen] = useState(false);
+
+  const handleOpenCreateStory = () => {
+    setCreateModalOpen(false);
+    if (onOpenCreateStory) {
+      onOpenCreateStory();
+    } else {
+      setLocalCreateStoryOpen(true);
+    }
+  };
+
+  const handleOpenCreatePost = () => {
+    setCreateModalOpen(false);
+    if (onOpenCreatePost) {
+      onOpenCreatePost();
+    } else {
+      setLocalCreatePostOpen(true);
+    }
+  };
+
+  const handleOpenCreateReel = () => {
+    setCreateModalOpen(false);
+    if (onOpenCreateReel) {
+      onOpenCreateReel();
+    } else {
+      setLocalCreateReelOpen(true);
+    }
+  };
 
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
@@ -77,7 +110,7 @@ const Sidebar = ({
     const isActive =
       location.pathname === item.to ||
       (item.to === '/home' && location.pathname === '/') ||
-      (item.to === '/chats' && location.pathname.startsWith('/chat/')) ||
+      (item.to === '/chats' && (location.pathname.startsWith('/chat/') || location.pathname.startsWith('/messages') || location.pathname === '/chats')) ||
       (item.to === '/live' && location.pathname.startsWith('/live'));
 
     return (
@@ -136,9 +169,15 @@ const Sidebar = ({
 
           {/* Quick Create (+) Button */}
           <button
-            onClick={() => setCreateModalOpen(true)}
-            className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white flex items-center justify-center shadow-md shadow-brand-500/25 transition-all hover:scale-105 active:scale-95 group relative"
-            title="Create Post, Story, or Reel"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setCreateModalOpen((prev) => !prev);
+            }}
+            className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl bg-gradient-to-tr from-brand-600 to-indigo-600 hover:from-brand-700 hover:to-indigo-700 text-white flex items-center justify-center shadow-md shadow-brand-500/25 transition-all hover:scale-105 active:scale-95 group relative select-none cursor-pointer touch-manipulation z-20"
+            title="Create Story, Post, or Reel"
+            aria-label="Create content"
           >
             <Plus className="w-5 h-5 stroke-[2.5]" />
             <span className="absolute left-full ml-3 px-2.5 py-1 rounded-lg bg-slate-900 text-white text-xs whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-md">
@@ -209,17 +248,54 @@ const Sidebar = ({
 
       {/* Mobile Fixed Bottom Navigation Bar (5 Canonical Items: Home, Messages, Create, Explore, Profile) */}
       {!hideMobileNav && (
-        <MobileBottomNav onOpenCreate={() => setCreateModalOpen(true)} />
+        <MobileBottomNav
+          onOpenCreate={(e) => {
+            e?.preventDefault?.();
+            e?.stopPropagation?.();
+            setCreateModalOpen((prev) => !prev);
+          }}
+        />
       )}
 
       {/* Global Content Creation Hub Modal */}
       <CreateModal
         isOpen={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
-        onOpenCreatePost={onOpenCreatePost}
-        onOpenCreateStory={onOpenCreateStory}
-        onOpenCreateReel={onOpenCreateReel}
+        onOpenCreateStory={handleOpenCreateStory}
+        onOpenCreatePost={handleOpenCreatePost}
+        onOpenCreateReel={handleOpenCreateReel}
       />
+
+      {/* Creation modals rendered when not delegated to parent */}
+      {!onOpenCreateStory && (
+        <CreateStoryModal
+          isOpen={localCreateStoryOpen}
+          onClose={() => setLocalCreateStoryOpen(false)}
+          onStoryCreated={(story) => {
+            window.dispatchEvent(new CustomEvent('chatflow:story-created', { detail: story }));
+          }}
+        />
+      )}
+
+      {!onOpenCreatePost && (
+        <CreatePostModal
+          isOpen={localCreatePostOpen}
+          onClose={() => setLocalCreatePostOpen(false)}
+          onPostCreated={(post) => {
+            window.dispatchEvent(new CustomEvent('chatflow:post-created', { detail: post }));
+          }}
+        />
+      )}
+
+      {!onOpenCreateReel && (
+        <CreateReelModal
+          isOpen={localCreateReelOpen}
+          onClose={() => setLocalCreateReelOpen(false)}
+          onReelCreated={(reel) => {
+            window.dispatchEvent(new CustomEvent('chatflow:reel-created', { detail: reel }));
+          }}
+        />
+      )}
     </>
   );
 };

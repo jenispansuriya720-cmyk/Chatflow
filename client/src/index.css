@@ -581,3 +581,27 @@ html, body {
   }
 }
 
+/* Message Reply Jump Highlight Animation */
+@keyframes replyPulse {
+  0% {
+    background-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.45);
+    transform: scale(1.02);
+  }
+  50% {
+    background-color: rgba(99, 102, 241, 0.2);
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: none;
+    transform: scale(1);
+  }
+}
+
+.reply-highlight-pulse {
+  animation: replyPulse 2s ease-out forwards !important;
+  border-radius: 1rem;
+}
+
+

@@ -51,6 +51,21 @@ const CreateReelModal = ({ isOpen, onClose, onReelCreated }) => {
     };
   }, [videoPreviewUrl, coverPreviewUrl]);
 
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && status !== 'UPLOADING') {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, status, onClose]);
+
   if (!isOpen) return null;
 
   // Handle Video file selection
@@ -214,6 +229,9 @@ const CreateReelModal = ({ isOpen, onClose, onReelCreated }) => {
       setUploadProgress(100);
       setStatus('SUCCESS');
       addToast('Reel published to feed with real media!', 'success');
+
+      // Dispatch global real-time event
+      window.dispatchEvent(new CustomEvent('chatflow:reel-created', { detail: res.data.reel }));
 
       if (onReelCreated) onReelCreated(res.data.reel);
       onClose();

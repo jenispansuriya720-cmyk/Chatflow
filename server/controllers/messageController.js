@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
@@ -46,10 +47,10 @@ const getMessages = async (req, res, next) => {
       .populate('sender', 'fullName username profilePicture')
       .populate({
         path: 'replyTo',
-        select: 'text sender attachments isDeleted',
+        select: 'text type imageUrl attachments voiceData sharedContent pollData isDeleted sender createdAt',
         populate: {
           path: 'sender',
-          select: 'fullName username',
+          select: 'fullName username profilePicture',
         },
       })
       .populate('reactions.user', 'fullName username profilePicture');
@@ -140,7 +141,19 @@ const getMessages = async (req, res, next) => {
 const sendMessage = async (req, res, next) => {
   try {
     const senderId = req.user._id;
-    const { conversationId, attachments, voiceData, replyTo, clientMessageId, type, sharedContent, pollData, eventData, imageUrl } = req.body;
+    const {
+      conversationId,
+      attachments,
+      voiceData,
+      replyTo,
+      replyToMessageId,
+      clientMessageId,
+      type,
+      sharedContent,
+      pollData,
+      eventData,
+      imageUrl,
+    } = req.body;
     const text = req.body.text || req.body.content || '';
 
     if (!conversationId) {
@@ -164,8 +177,8 @@ const sendMessage = async (req, res, next) => {
         .populate('sender', 'fullName username profilePicture')
         .populate({
           path: 'replyTo',
-          select: 'text sender attachments isDeleted',
-          populate: { path: 'sender', select: 'fullName username' },
+          select: 'text type imageUrl attachments voiceData sharedContent pollData isDeleted sender createdAt',
+          populate: { path: 'sender', select: 'fullName username profilePicture' },
         });
 
       if (existingMsg) {
@@ -187,6 +200,30 @@ const sendMessage = async (req, res, next) => {
         success: false,
         message: 'You are not a participant in this conversation.',
       });
+    }
+
+    // 2. Validate replyTo reference (must belong to same conversation per Section 9)
+    const rawReplyTo = replyToMessageId || replyTo;
+    let validatedReplyTo = null;
+
+    if (rawReplyTo) {
+      const targetReplyId = typeof rawReplyTo === 'object' ? rawReplyTo._id : rawReplyTo;
+      if (mongoose.Types.ObjectId.isValid(targetReplyId)) {
+        const repliedMessage = await Message.findById(targetReplyId);
+        if (!repliedMessage) {
+          return res.status(400).json({
+            success: false,
+            message: 'Replied-to message does not exist.',
+          });
+        }
+        if (repliedMessage.conversation.toString() !== conversationId.toString()) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid reply reference. Message must belong to the same conversation.',
+          });
+        }
+        validatedReplyTo = repliedMessage._id;
+      }
     }
 
     // Determine receiver for direct chats
@@ -234,7 +271,7 @@ const sendMessage = async (req, res, next) => {
       sharedContent: sharedContent || undefined,
       pollData: pollData || undefined,
       eventData: eventData || undefined,
-      replyTo: replyTo || null,
+      replyTo: validatedReplyTo,
       status: 'sent',
       sentAt: new Date(),
       readBy: [{ user: senderId, readAt: new Date() }],
@@ -247,10 +284,10 @@ const sendMessage = async (req, res, next) => {
       .populate('sender', 'fullName username profilePicture')
       .populate({
         path: 'replyTo',
-        select: 'text sender attachments isDeleted',
+        select: 'text type imageUrl attachments voiceData sharedContent pollData isDeleted sender createdAt',
         populate: {
           path: 'sender',
-          select: 'fullName username',
+          select: 'fullName username profilePicture',
         },
       });
 

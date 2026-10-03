@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronUp, ChevronDown, Plus, Film, Loader2, CheckCircle2 } from 'lucide-react';
 import Sidebar from '../../components/layout/Sidebar';
@@ -21,6 +21,15 @@ const ReelsPage = () => {
 
   useEffect(() => {
     loadReels();
+
+    const handleReelCreated = () => {
+      loadReels();
+    };
+
+    window.addEventListener('chatflow:reel-created', handleReelCreated);
+    return () => {
+      window.removeEventListener('chatflow:reel-created', handleReelCreated);
+    };
   }, []);
 
   const loadReels = async () => {

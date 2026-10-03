@@ -307,11 +307,21 @@ const StoryViewerModal = ({ storyGroup, onClose, onNextGroup, onPrevGroup }) => 
               <span>This story is no longer available.</span>
             </div>
           ) : currentStory.media ? (
-            <img
-              src={currentStory.media}
-              alt="Story"
-              className="w-full h-full object-cover"
-            />
+            currentStory.mediaType === 'video' || currentStory.media?.match(/\.(mp4|webm|mov)$/i) ? (
+              <video
+                src={currentStory.media}
+                className="w-full h-full object-cover"
+                autoPlay
+                loop
+                playsInline
+              />
+            ) : (
+              <img
+                src={currentStory.media}
+                alt="Story"
+                className="w-full h-full object-cover"
+              />
+            )
           ) : (
             <div className="w-full h-full flex items-center justify-center p-8 text-center bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 text-white font-bold text-lg leading-relaxed">
               {currentStory.text}

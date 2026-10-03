@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getUsers,
+  getUserSuggestions,
   getUserById,
   updateProfile,
   completeOnboarding,
@@ -28,6 +29,7 @@ const { toggleFollow } = require('../controllers/followController');
 router.use(protect);
 
 router.get('/', getUsers);
+router.get('/suggestions', getUserSuggestions);
 router.post('/onboarding', completeOnboarding);
 router.put('/privacy', togglePrivacy);
 router.put('/privacy/settings', updatePrivacySettings);

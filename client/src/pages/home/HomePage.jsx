@@ -9,6 +9,7 @@ import PostComposer from '../../components/social/PostComposer';
 import PostCard from '../../components/social/PostCard';
 import CommentsModal from '../../components/social/CommentsModal';
 import SharePostModal from '../../components/social/SharePostModal';
+import CreatePostModal from '../../components/social/CreatePostModal';
 import CreateReelModal from '../../components/social/CreateReelModal';
 import Avatar from '../../components/common/Avatar';
 import { useAuth } from '../../context/AuthContext';
@@ -32,6 +33,7 @@ const HomePage = () => {
   // Modals state
   const [selectedStoryGroup, setSelectedStoryGroup] = useState(null);
   const [createStoryOpen, setCreateStoryOpen] = useState(false);
+  const [createPostOpen, setCreatePostOpen] = useState(false);
   const [createReelOpen, setCreateReelOpen] = useState(false);
   const [activeCommentsPost, setActiveCommentsPost] = useState(null);
   const [activeSharePost, setActiveSharePost] = useState(null);
@@ -40,6 +42,23 @@ const HomePage = () => {
     loadStories();
     loadFeed();
     loadSuggestedUsers();
+
+    const handleCustomStoryCreated = () => loadStories();
+    const handleCustomPostCreated = (e) => {
+      if (e.detail) {
+        setPosts((prev) => [e.detail, ...prev.filter((p) => p._id !== e.detail._id)]);
+      } else {
+        loadFeed();
+      }
+    };
+
+    window.addEventListener('chatflow:story-created', handleCustomStoryCreated);
+    window.addEventListener('chatflow:post-created', handleCustomPostCreated);
+
+    return () => {
+      window.removeEventListener('chatflow:story-created', handleCustomStoryCreated);
+      window.removeEventListener('chatflow:post-created', handleCustomPostCreated);
+    };
   }, []);
 
   // Real-time story and post sync
@@ -122,6 +141,7 @@ const HomePage = () => {
     <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       {/* Unified Navigation Sidebar */}
       <Sidebar
+        onOpenCreatePost={() => setCreatePostOpen(true)}
         onOpenCreateStory={() => setCreateStoryOpen(true)}
         onOpenCreateReel={() => setCreateReelOpen(true)}
       />
@@ -353,6 +373,13 @@ const HomePage = () => {
         isOpen={createStoryOpen}
         onClose={() => setCreateStoryOpen(false)}
         onStoryCreated={() => loadStories()}
+      />
+
+      {/* Create Post Modal */}
+      <CreatePostModal
+        isOpen={createPostOpen}
+        onClose={() => setCreatePostOpen(false)}
+        onPostCreated={(newPost) => setPosts((prev) => [newPost, ...prev])}
       />
 
       {/* Create Reel Modal */}

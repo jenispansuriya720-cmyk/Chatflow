@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
+  X,
   Phone,
   Video,
   Search,
@@ -123,9 +124,11 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
       <div className="flex items-center space-x-2.5 min-w-0">
         {onBack && (
           <button
+            type="button"
             onClick={onBack}
             className="md:hidden p-2 min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
             title="Back to conversation list"
+            aria-label="Back to conversation list"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -311,9 +314,43 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
                   </button>
                 </>
               )}
+
+              {/* Close Chat Option */}
+              {onBack && (
+                <>
+                  <div className="my-1 border-t border-slate-100 dark:border-dark-border" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onBack();
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3 py-2 hover:bg-slate-100 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-200 transition-colors font-semibold"
+                    aria-label="Close chat"
+                    title="Close chat"
+                  >
+                    <X className="w-4 h-4 text-slate-400" />
+                    <span>Close Chat</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
+
+        {/* Desktop Close Chat Action Button */}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Close chat"
+            title="Close chat"
+            className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 ml-1 text-slate-600 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover border border-slate-200/80 dark:border-dark-border text-xs font-semibold transition-all active:scale-95 cursor-pointer shadow-xs"
+          >
+            <X className="w-4 h-4 text-slate-500 dark:text-dark-muted" />
+            <span>Close</span>
+          </button>
+        )}
       </div>
 
       {/* Block & Report Modals */}

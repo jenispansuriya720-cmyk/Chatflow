@@ -228,6 +228,22 @@ function App() {
                     }
                   />
                   <Route
+                    path="/messages"
+                    element={
+                      <ProtectedRoute>
+                        <ChatDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/messages/:conversationId"
+                    element={
+                      <ProtectedRoute>
+                        <ChatDashboard />
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
                     path="/contacts"
                     element={
                       <ProtectedRoute>
