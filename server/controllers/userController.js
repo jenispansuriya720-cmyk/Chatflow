@@ -10,6 +10,10 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/Message');
 const AuditLog = require('../models/AuditLog');
 const { cleanupMedia } = require('../utils/mediaCleanup');
+const {
+  sendPasswordChangedEmail,
+  sendAccountDeletedEmail,
+} = require('../services/emailService');
 
 // @desc    Get all users with search and filter
 // @route   GET /api/users
