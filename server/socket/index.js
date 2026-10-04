@@ -274,7 +274,7 @@ const initializeSocket = (io) => {
     socket.on('typing:stop', handleTypingStop);
 
     // Reactions, edits, deletes
-    socket.on('messageReaction', ({ conversationId, messageId, reactions }) => {
+    const handleReactionBroadcast = ({ conversationId, messageId, reactions }) => {
       if (!conversationId) return;
       socket.to(`conversation:${conversationId}`).emit('messageReaction', {
         conversationId,
@@ -286,7 +286,16 @@ const initializeSocket = (io) => {
         messageId,
         reactions,
       });
-    });
+      socket.to(`conversation:${conversationId}`).emit('message:reactionUpdated', {
+        conversationId,
+        messageId,
+        reactions,
+      });
+    };
+
+    socket.on('messageReaction', handleReactionBroadcast);
+    socket.on('message:reaction', handleReactionBroadcast);
+    socket.on('message:reactionUpdated', handleReactionBroadcast);
 
     socket.on('messageEdited', (updatedMessage) => {
       if (!updatedMessage || !updatedMessage.conversation) return;

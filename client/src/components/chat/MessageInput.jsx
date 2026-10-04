@@ -49,13 +49,13 @@ const MessageInput = () => {
 
   const [text, setText] = useState('');
 
-  // Reply metadata computation (Sections 2, 3, 4, 14, 15)
+  // Reply metadata computation (Sections 11, 12, 13, 14, 15)
   const replySenderName = (() => {
     if (!replyingTo) return '';
     const sender = replyingTo.sender;
     const senderId = sender?._id || replyingTo.senderId || sender;
     if (user?._id && senderId?.toString() === user._id.toString()) {
-      return user.fullName || user.username || 'yourself';
+      return user.fullName || user.username || 'You';
     }
     return sender?.fullName || sender?.username || 'User';
   })();
@@ -506,7 +506,7 @@ const MessageInput = () => {
                     className="text-xs font-bold truncate flex items-center space-x-1"
                     style={{ color: 'var(--chat-accent, #4f46e5)' }}
                   >
-                    <span>Replying to {replySenderName}.</span>
+                    <span>Replying to {replySenderName}</span>
                   </div>
                   <p className="text-[12px] text-slate-600 dark:text-dark-muted truncate line-clamp-2 mt-0.5 leading-snug">
                     {replyPreviewText}
@@ -514,13 +514,13 @@ const MessageInput = () => {
                 </div>
               </div>
 
-              {/* Close Reply Mode (Requirement 5) */}
+              {/* Close Reply Mode (Sections 11, 12, 19, 24) */}
               <button
                 type="button"
                 onClick={() => setReplyingTo(null)}
-                aria-label="Cancel reply"
+                aria-label="Close reply"
                 className="w-7 h-7 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-dark-hover transition-colors flex-shrink-0 touch-manipulation cursor-pointer"
-                title="Cancel reply (Esc)"
+                title="Close reply (Esc)"
               >
                 <X className="w-4 h-4" />
               </button>

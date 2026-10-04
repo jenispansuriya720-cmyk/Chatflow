@@ -685,35 +685,60 @@ const reactToMessage = async (req, res, next) => {
     const userId = req.user._id;
     const { emoji } = req.body;
 
-    if (!emoji) {
+    if (!emoji || typeof emoji !== 'string' || !emoji.trim()) {
       return res.status(400).json({ success: false, message: 'Emoji reaction is required.' });
     }
+
+    const cleanEmoji = emoji.trim();
 
     const message = await Message.findById(req.params.id);
     if (!message) {
       return res.status(404).json({ success: false, message: 'Message not found.' });
     }
 
+    // Verify user is an authorized participant in the conversation
+    const conversation = await Conversation.findOne({
+      _id: message.conversation,
+      participants: { $in: [userId] },
+    });
+    if (!conversation) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to react to messages in this conversation.',
+      });
+    }
+
     const existingReactionIndex = message.reactions.findIndex(
-      (r) => r.user.toString() === userId.toString() && r.emoji === emoji
+      (r) =>
+        (r.user?.toString() === userId.toString() ||
+          r.user?._id?.toString() === userId.toString()) &&
+        r.emoji === cleanEmoji
     );
 
     if (existingReactionIndex > -1) {
+      // User tapped their current reaction again -> Remove reaction (Section 8)
       message.reactions.splice(existingReactionIndex, 1);
     } else {
+      // User tapped a new/different emoji -> Replace previous reaction by this user (Section 7)
       message.reactions = message.reactions.filter(
-        (r) => r.user.toString() !== userId.toString()
+        (r) =>
+          r.user?.toString() !== userId.toString() &&
+          r.user?._id?.toString() !== userId.toString()
       );
-      message.reactions.push({ emoji, user: userId });
+      message.reactions.push({
+        emoji: cleanEmoji,
+        user: userId,
+        createdAt: new Date(),
+      });
 
       if (message.sender.toString() !== userId.toString()) {
         await Notification.create({
           user: message.sender,
           sender: userId,
           type: 'reaction',
-          message: `${req.user.fullName} reacted ${emoji} to your message`,
+          message: `${req.user.fullName} reacted ${cleanEmoji} to your message`,
           conversationId: message.conversation,
-        });
+        }).catch(() => {});
       }
     }
 
@@ -721,19 +746,23 @@ const reactToMessage = async (req, res, next) => {
 
     const populated = await Message.findById(message._id)
       .populate('sender', 'fullName username profilePicture')
+      .populate({
+        path: 'replyTo',
+        select: 'text type imageUrl attachments voiceData sharedContent pollData isDeleted sender createdAt',
+        populate: { path: 'sender', select: 'fullName username profilePicture' },
+      })
       .populate('reactions.user', 'fullName username profilePicture');
 
+    const reactionPayload = {
+      conversationId: message.conversation.toString(),
+      messageId: message._id.toString(),
+      reactions: populated.reactions,
+    };
+
     if (req.io) {
-      req.io.to(`conversation:${message.conversation}`).emit('messageReaction', {
-        conversationId: message.conversation,
-        messageId: message._id,
-        reactions: populated.reactions,
-      });
-      req.io.to(`conversation:${message.conversation}`).emit('message:reaction', {
-        conversationId: message.conversation,
-        messageId: message._id,
-        reactions: populated.reactions,
-      });
+      req.io.to(`conversation:${message.conversation}`).emit('messageReaction', reactionPayload);
+      req.io.to(`conversation:${message.conversation}`).emit('message:reaction', reactionPayload);
+      req.io.to(`conversation:${message.conversation}`).emit('message:reactionUpdated', reactionPayload);
     }
 
     res.status(200).json({

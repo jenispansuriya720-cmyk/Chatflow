@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { format } from 'date-fns';
 import {
   Check,
@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Clock,
   ShieldAlert,
+  Plus,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -24,7 +25,13 @@ import Avatar from '../common/Avatar';
 import DeleteConfirmModal from '../modals/DeleteConfirmModal';
 import ReportModal from '../modals/ReportModal';
 
-const QUICK_REACTIONS = ['❤️', '👍', '😂', '😮', '😢', '😡', '🔥'];
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const MORE_REACTIONS = [
+  '🔥', '🎉', '💯', '👏', '🤝', '🚀',
+  '🥰', '😍', '😎', '🥳', '🤔', '👀',
+  '🥺', '😡', '✨', '⚡', '💖', '🙌',
+  '💔', '🤯', '😴', '🫡', '🤤', '🫠',
+];
 
 const MessageBubble = ({
   message,
@@ -48,13 +55,61 @@ const MessageBubble = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactionBarOpen, setReactionBarOpen] = useState(false);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [showMoreEmojis, setShowMoreEmojis] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text || '');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteOption, setDeleteOption] = useState('for_everyone');
   const [reportModalOpen, setReportModalOpen] = useState(false);
+
+  const desktopReactionPickerRef = useRef(null);
+  const desktopMenuRef = useRef(null);
+  const touchStartPos = useRef({ x: 0, y: 0 });
+  const isTouchMoved = useRef(false);
+  const longPressTimerRef = useRef(null);
   const audioRef = useRef(null);
+
+  // Close desktop floating popups when scrolling or clicking outside or Esc (Section 22)
+  useEffect(() => {
+    if (!menuOpen && !reactionBarOpen) return;
+
+    const handleScrollOrOutsideClick = (e) => {
+      if (
+        desktopMenuRef.current &&
+        !desktopMenuRef.current.contains(e.target) &&
+        desktopReactionPickerRef.current &&
+        !desktopReactionPickerRef.current.contains(e.target)
+      ) {
+        setMenuOpen(false);
+        setReactionBarOpen(false);
+      }
+    };
+
+    const handleScroll = () => {
+      setMenuOpen(false);
+      setReactionBarOpen(false);
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false);
+        setReactionBarOpen(false);
+        setMobileSheetOpen(false);
+        setShowMoreEmojis(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    document.addEventListener('mousedown', handleScrollOrOutsideClick);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      document.removeEventListener('mousedown', handleScrollOrOutsideClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen, reactionBarOpen]);
 
   // Format time
   const time = message.createdAt
@@ -66,24 +121,43 @@ const MessageBubble = ({
     if (message.text) {
       navigator.clipboard.writeText(message.text);
       setMenuOpen(false);
+      setMobileSheetOpen(false);
     }
   };
 
-  // Reply handler
+  // Reply handler (Section 11, 12)
   const handleReply = () => {
     setReplyingTo(message);
     setMenuOpen(false);
+    setMobileSheetOpen(false);
   };
 
-  // Long press timer for mobile (Sections 1, 17)
-  const longPressTimerRef = useRef(null);
-
-  const handleTouchStart = () => {
+  // Touch handlers for mobile long press (Section 4)
+  const handleTouchStart = (e) => {
     if (message.isDeleted || isEditing) return;
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+    isTouchMoved.current = false;
+
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
-      setMobileSheetOpen(true);
-      if (navigator.vibrate) navigator.vibrate(40);
-    }, 500);
+      if (!isTouchMoved.current) {
+        setMobileSheetOpen(true);
+        if (navigator.vibrate) navigator.vibrate(40);
+      }
+    }, 450);
+  };
+
+  const handleTouchMove = (e) => {
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartPos.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPos.current.y);
+    if (dx > 10 || dy > 10) {
+      isTouchMoved.current = true;
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    }
   };
 
   const handleTouchEnd = () => {
@@ -92,7 +166,7 @@ const MessageBubble = ({
     }
   };
 
-  // Right-click desktop context menu handler (Sections 1, 18)
+  // Right-click desktop context menu handler
   const handleContextMenu = (e) => {
     if (message.isDeleted || isEditing) return;
     e.preventDefault();
@@ -100,6 +174,7 @@ const MessageBubble = ({
       setMobileSheetOpen(true);
     } else {
       setMenuOpen(true);
+      setReactionBarOpen(false);
     }
   };
 
@@ -138,9 +213,12 @@ const MessageBubble = ({
   }, {});
 
   const hasReacted = (emoji) => {
-    return (message.reactions || []).some(
-      (r) => (r.user?._id === user?._id || r.user === user?._id) && r.emoji === emoji
-    );
+    if (!user?._id) return false;
+    const currentUid = user._id.toString();
+    return (message.reactions || []).some((r) => {
+      const rUid = (r.user?._id || r.user || r.userId)?.toString();
+      return rUid === currentUid && r.emoji === emoji;
+    });
   };
 
   // Modern bubble corner geometry based on sender and burst grouping
@@ -204,15 +282,9 @@ const MessageBubble = ({
 
           {/* Message Bubble Card */}
           <div
-            onClick={(e) => {
-              if (e.target.closest('button, a, video, audio, input, textarea, img')) return;
-              if (window.innerWidth < 768 && !message.isDeleted && !isEditing) {
-                setMobileSheetOpen(true);
-              }
-            }}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
-            onTouchMove={handleTouchEnd}
+            onTouchMove={handleTouchMove}
             onContextMenu={handleContextMenu}
             className={`relative px-4 py-2.5 shadow-xs text-sm break-words transition-all duration-200 cursor-pointer md:cursor-default ${getBubbleCorners()} ${
               message.isDeleted
@@ -609,21 +681,46 @@ const MessageBubble = ({
             </div>
           </div>
 
-          {/* Reactions Pill Display */}
+          {/* Reactions Pill Display (Section 10) */}
           {Object.keys(groupedReactions).length > 0 && !message.isDeleted && (
-            <div className="flex flex-wrap gap-1 mt-1 px-1">
+            <div
+              className={`flex flex-wrap gap-1 mt-1 px-1 ${
+                isOwn ? 'justify-end' : 'justify-start'
+              }`}
+              role="group"
+              aria-label="Message reactions"
+            >
               {Object.entries(groupedReactions).map(([emoji, count]) => {
                 const active = hasReacted(emoji);
                 return (
                   <button
                     key={emoji}
-                    onClick={() => reactToMessage(message._id, emoji)}
-                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-medium border shadow-xs transition-all ${
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      reactToMessage(message._id, emoji);
+                    }}
+                    aria-label={
+                      active ? `Remove ${emoji} reaction` : `React with ${emoji}`
+                    }
+                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-medium border shadow-xs transition-all cursor-pointer ${
                       active
                         ? 'bg-brand-500/15 border-brand-500/40 text-brand-600 dark:text-brand-400 scale-105'
                         : 'bg-white dark:bg-dark-card border-slate-200 dark:border-dark-border text-slate-700 dark:text-slate-300 hover:scale-105'
                     }`}
-                    title={`${count} reactions`}
+                    style={
+                      active
+                        ? {
+                            borderColor: 'var(--chat-accent, #4f46e5)',
+                            backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                          }
+                        : {}
+                    }
+                    title={
+                      active
+                        ? 'Tap to remove reaction'
+                        : `${count} reaction${count > 1 ? 's' : ''}`
+                    }
                   >
                     <span>{emoji}</span>
                     <span className="text-[11px] font-bold">{count}</span>
@@ -632,136 +729,279 @@ const MessageBubble = ({
               })}
             </div>
           )}
-        </div>
 
-        {/* Hover Action Bar (Desktop) */}
-        {!message.isDeleted && (
-          <div
-            className={`absolute top-0 opacity-0 group-hover:opacity-100 transition-opacity duration-150 hidden md:flex items-center space-x-1 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-xl shadow-md p-1 z-10 ${
-              isOwn ? 'right-full mr-2' : 'left-full ml-2'
-            }`}
-          >
-            {/* Reaction Picker Button */}
-            <div className="relative">
-              <button
-                onClick={() => setReactionBarOpen(!reactionBarOpen)}
-                className="p-1.5 text-slate-500 hover:text-amber-500 hover:bg-slate-100 dark:hover:bg-dark-hover rounded-lg transition-colors"
-                title="React"
+          {/* Desktop Floating Reaction Bar & Action Menu (Sections 1, 2, 3) */}
+          {!message.isDeleted && (
+            <div
+              ref={desktopReactionPickerRef}
+              className={`absolute -top-10 z-30 hidden md:flex items-center gap-1 p-1 bg-white/95 dark:bg-dark-card/95 backdrop-blur-md border border-slate-200 dark:border-dark-border rounded-full shadow-lg transition-all duration-150 ${
+                isOwn ? 'left-0' : 'right-0'
+              } ${
+                reactionBarOpen || menuOpen
+                  ? 'opacity-100 pointer-events-auto scale-100'
+                  : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-hover:scale-100 scale-95'
+              }`}
+            >
+              {/* Quick reaction emojis */}
+              <div
+                className="flex items-center gap-0.5"
+                role="toolbar"
+                aria-label="Quick reactions"
               >
-                <Smile className="w-3.5 h-3.5" />
-              </button>
-
-              {reactionBarOpen && (
-                <div className="absolute bottom-full mb-2 -left-4 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border shadow-xl rounded-full px-2 py-1 flex items-center space-x-1.5 animate-slide-up z-30">
-                  {QUICK_REACTIONS.map((emoji) => (
+                {QUICK_REACTIONS.map((emoji) => {
+                  const active = hasReacted(emoji);
+                  return (
                     <button
                       key={emoji}
-                      onClick={() => {
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
                         reactToMessage(message._id, emoji);
                         setReactionBarOpen(false);
+                        setShowMoreEmojis(false);
                       }}
-                      className="text-lg hover:scale-125 transition-transform p-1"
+                      aria-label={
+                        active ? `Remove ${emoji} reaction` : `React with ${emoji}`
+                      }
+                      className={`w-7 h-7 flex items-center justify-center text-sm rounded-full transition-all duration-150 hover:scale-125 cursor-pointer ${
+                        active
+                          ? 'bg-brand-500/20 ring-1 ring-brand-500 scale-110'
+                          : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
+                      }`}
+                      title={active ? `Remove ${emoji}` : `React ${emoji}`}
                     >
                       {emoji}
                     </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                  );
+                })}
 
-            {/* Reply */}
-            <button
-              onClick={handleReply}
-              className="p-1.5 text-slate-500 hover:text-brand-600 hover:bg-slate-100 dark:hover:bg-dark-hover rounded-lg transition-colors"
-              title="Reply"
-            >
-              <Reply className="w-3.5 h-3.5" />
-            </button>
-
-            {/* More Menu Toggle */}
-            <div className="relative">
-              <button
-                onClick={() => setMenuOpen(!menuOpen)}
-                className="p-1.5 text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-hover rounded-lg transition-colors"
-                title="More actions"
-              >
-                <MoreHorizontal className="w-3.5 h-3.5" />
-              </button>
-
-              {menuOpen && (
-                <div className="absolute bottom-full mb-2 right-0 w-44 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl py-1 z-30 text-xs font-medium animate-slide-up text-slate-700 dark:text-slate-200">
-                  {message.text && (
-                    <button
-                      onClick={handleCopy}
-                      className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors"
-                    >
-                      <Copy className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Copy text</span>
-                    </button>
-                  )}
-
+                {/* ＋ More Reactions button */}
+                <div className="relative">
                   <button
-                    onClick={() => {
-                      setMenuOpen(false);
-                      if (onForward) onForward(message);
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMoreEmojis((prev) => !prev);
                     }}
-                    className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors"
+                    aria-label="More reactions"
+                    className={`w-7 h-7 flex items-center justify-center text-xs font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors cursor-pointer ${
+                      showMoreEmojis
+                        ? 'bg-slate-200 dark:bg-dark-hover text-brand-600'
+                        : ''
+                    }`}
+                    title="More reactions"
                   >
-                    <Forward className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Forward</span>
+                    <Plus className="w-4 h-4" />
                   </button>
 
-                  {/* OWN MESSAGE ACTIONS ONLY */}
-                  {isOwn ? (
-                    <>
-                      {message.text && (
-                        <button
-                          onClick={() => {
-                            setMenuOpen(false);
-                            setIsEditing(true);
-                          }}
-                          className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors"
-                        >
-                          <Edit2 className="w-3.5 h-3.5 text-slate-400" />
-                          <span>Edit message</span>
-                        </button>
-                      )}
+                  {/* More Emojis Popover */}
+                  {showMoreEmojis && (
+                    <div
+                      className={`absolute bottom-full mb-2 ${
+                        isOwn ? 'left-0' : 'right-0'
+                      } w-64 p-2 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl grid grid-cols-6 gap-1 z-40 animate-slide-up`}
+                      role="dialog"
+                      aria-label="Expanded emoji reactions"
+                    >
+                      {MORE_REACTIONS.map((emoji) => {
+                        const active = hasReacted(emoji);
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              reactToMessage(message._id, emoji);
+                              setShowMoreEmojis(false);
+                              setReactionBarOpen(false);
+                            }}
+                            aria-label={
+                              active
+                                ? `Remove ${emoji} reaction`
+                                : `React with ${emoji}`
+                            }
+                            className={`w-9 h-9 flex items-center justify-center text-lg rounded-xl transition-transform hover:scale-125 cursor-pointer ${
+                              active
+                                ? 'bg-brand-500/20 ring-1 ring-brand-500'
+                                : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
+                            }`}
+                          >
+                            {emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
 
-                      <div className="border-t border-slate-100 dark:border-dark-border my-1" />
+              {/* Thin divider */}
+              <div className="h-4 w-px bg-slate-200 dark:bg-dark-border mx-0.5" />
 
+              {/* Reply Button */}
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleReply();
+                }}
+                aria-label="Reply"
+                className="w-7 h-7 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-dark-hover rounded-full transition-colors cursor-pointer"
+                title="Reply"
+              >
+                <Reply className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Desktop More Menu Trigger */}
+              <div className="relative" ref={desktopMenuRef}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen((prev) => !prev);
+                  }}
+                  aria-label="More actions"
+                  className={`w-7 h-7 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-hover rounded-full transition-colors cursor-pointer ${
+                    menuOpen
+                      ? 'bg-slate-200 dark:bg-dark-hover text-brand-600'
+                      : ''
+                  }`}
+                  title="More actions"
+                >
+                  <MoreHorizontal className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Desktop Message Actions Dropdown */}
+                {menuOpen && (
+                  <div
+                    className={`absolute bottom-full mb-2 ${
+                      isOwn ? 'left-0' : 'right-0'
+                    } w-44 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl py-1 z-40 text-xs font-medium animate-slide-up text-slate-700 dark:text-slate-200`}
+                    role="menu"
+                  >
+                    {/* React action */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpen(false);
+                        setReactionBarOpen(true);
+                        setShowMoreEmojis(true);
+                      }}
+                      aria-label="React"
+                      className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <Smile className="w-3.5 h-3.5 text-slate-400" />
+                      <span>React</span>
+                    </button>
+
+                    {/* Reply action */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReply();
+                      }}
+                      aria-label="Reply"
+                      className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <Reply className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Reply</span>
+                    </button>
+
+                    {/* Copy action (only if message text) */}
+                    {message.text && (
                       <button
-                        onClick={() => {
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCopy();
+                        }}
+                        aria-label="Copy text"
+                        className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
+                        role="menuitem"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Copy</span>
+                      </button>
+                    )}
+
+                    {/* Forward action */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpen(false);
+                        if (onForward) onForward(message);
+                      }}
+                      aria-label="Forward message"
+                      className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
+                      role="menuitem"
+                    >
+                      <Forward className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Forward</span>
+                    </button>
+
+                    {/* Edit (own message only) */}
+                    {isOwn && message.text && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMenuOpen(false);
+                          setIsEditing(true);
+                        }}
+                        aria-label="Edit message"
+                        className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
+                        role="menuitem"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Edit</span>
+                      </button>
+                    )}
+
+                    {/* Delete (own message) or Report (other user) */}
+                    <div className="border-t border-slate-100 dark:border-dark-border my-1" />
+
+                    {isOwn ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setMenuOpen(false);
                           setDeleteModalOpen(true);
                         }}
-                        className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors"
+                        aria-label="Delete message"
+                        className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors cursor-pointer"
+                        role="menuitem"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete message</span>
+                        <span>Delete</span>
                       </button>
-                    </>
-                  ) : (
-                    /* OTHER USER'S MESSAGE: NO DELETE OR EDIT, ONLY REPORT */
-                    <>
-                      <div className="border-t border-slate-100 dark:border-dark-border my-1" />
-
+                    ) : (
                       <button
-                        onClick={() => {
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setMenuOpen(false);
                           setReportModalOpen(true);
                         }}
-                        className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors"
+                        aria-label="Report message"
+                        className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors cursor-pointer"
+                        role="menuitem"
                       >
                         <ShieldAlert className="w-3.5 h-3.5" />
-                        <span>Report message</span>
+                        <span>Report</span>
                       </button>
-                    </>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}
@@ -778,44 +1018,113 @@ const MessageBubble = ({
         isOwn={isOwn}
       />
 
-      {/* Mobile Action Bottom Sheet */}
+      {/* Mobile Action Bottom Sheet (Sections 4 & 5) */}
       {mobileSheetOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-end animate-fade-in">
+        <div
+          className="fixed inset-0 z-50 md:hidden flex flex-col justify-end animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Message actions"
+        >
           {/* Backdrop */}
           <div
-            onClick={() => setMobileSheetOpen(false)}
+            onClick={() => {
+              setMobileSheetOpen(false);
+              setShowMoreEmojis(false);
+            }}
             className="absolute inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
           />
 
-          {/* Bottom Sheet */}
+          {/* Bottom Sheet Card */}
           <div className="relative z-10 w-full bg-white dark:bg-dark-card rounded-t-3xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl border-t border-slate-200 dark:border-dark-border animate-slide-up">
-            {/* Handle */}
-            <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-dark-border mx-auto mb-3.5" />
+            {/* Drag handle */}
+            <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-dark-border mx-auto mb-3" />
 
-            {/* Quick Reactions */}
-            <div className="flex items-center justify-around py-2.5 px-2 bg-slate-100 dark:bg-dark-hover rounded-2xl mb-3.5">
-              {QUICK_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => {
-                    reactToMessage(message._id, emoji);
-                    setMobileSheetOpen(false);
-                  }}
-                  className="text-2xl p-1.5 hover:scale-125 active:scale-125 transition-transform"
-                >
-                  {emoji}
-                </button>
-              ))}
+            {/* Touch-Friendly Reaction Bar with ~44px targets (Section 5) */}
+            <div className="flex items-center justify-between py-2 px-1 bg-slate-100 dark:bg-dark-hover rounded-2xl mb-3 shadow-inner">
+              {QUICK_REACTIONS.map((emoji) => {
+                const active = hasReacted(emoji);
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => {
+                      reactToMessage(message._id, emoji);
+                      setMobileSheetOpen(false);
+                      setShowMoreEmojis(false);
+                    }}
+                    aria-label={
+                      active ? `Remove ${emoji} reaction` : `React with ${emoji}`
+                    }
+                    className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-2xl rounded-xl transition-all active:scale-125 touch-manipulation cursor-pointer ${
+                      active
+                        ? 'bg-brand-500/20 ring-2 ring-brand-500 scale-105'
+                        : 'hover:bg-slate-200/50 dark:hover:bg-dark-border/50'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
+
+              {/* ＋ Button for more emojis on mobile */}
+              <button
+                type="button"
+                onClick={() => setShowMoreEmojis((prev) => !prev)}
+                aria-label="More reactions"
+                className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-lg font-bold rounded-xl text-slate-600 dark:text-slate-300 transition-colors touch-manipulation cursor-pointer ${
+                  showMoreEmojis
+                    ? 'bg-brand-500/20 text-brand-600 ring-1 ring-brand-500'
+                    : 'hover:bg-slate-200/50 dark:hover:bg-dark-border/50'
+                }`}
+              >
+                <Plus className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* Action Items List */}
+            {/* Expanded Emoji Grid if ＋ tapped */}
+            {showMoreEmojis && (
+              <div className="grid grid-cols-6 gap-2 p-2 mb-3 bg-slate-50 dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl max-h-48 overflow-y-auto animate-scale-in">
+                {MORE_REACTIONS.map((emoji) => {
+                  const active = hasReacted(emoji);
+                  return (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => {
+                        reactToMessage(message._id, emoji);
+                        setMobileSheetOpen(false);
+                        setShowMoreEmojis(false);
+                      }}
+                      aria-label={
+                        active
+                          ? `Remove ${emoji} reaction`
+                          : `React with ${emoji}`
+                      }
+                      className={`min-w-[40px] min-h-[40px] flex items-center justify-center text-xl rounded-xl transition-all active:scale-125 touch-manipulation cursor-pointer ${
+                        active
+                          ? 'bg-brand-500/20 ring-2 ring-brand-500'
+                          : 'hover:bg-slate-200 dark:hover:bg-dark-hover'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Action Items List with ~44px Touch Targets */}
             <div className="space-y-1 text-sm font-medium text-slate-800 dark:text-slate-200">
               <button
+                type="button"
                 onClick={() => {
                   handleReply();
                   setMobileSheetOpen(false);
+                  setShowMoreEmojis(false);
                 }}
-                className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                aria-label="Reply"
+                className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors touch-manipulation cursor-pointer"
               >
                 <Reply className="w-5 h-5 text-slate-500" />
                 <span>Reply</span>
@@ -823,11 +1132,14 @@ const MessageBubble = ({
 
               {message.text && (
                 <button
+                  type="button"
                   onClick={() => {
                     handleCopy();
                     setMobileSheetOpen(false);
+                    setShowMoreEmojis(false);
                   }}
-                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                  aria-label="Copy text"
+                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors touch-manipulation cursor-pointer"
                 >
                   <Copy className="w-5 h-5 text-slate-500" />
                   <span>Copy Text</span>
@@ -835,11 +1147,14 @@ const MessageBubble = ({
               )}
 
               <button
+                type="button"
                 onClick={() => {
                   setMobileSheetOpen(false);
+                  setShowMoreEmojis(false);
                   if (onForward) onForward(message);
                 }}
-                className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                aria-label="Forward message"
+                className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors touch-manipulation cursor-pointer"
               >
                 <Forward className="w-5 h-5 text-slate-500" />
                 <span>Forward</span>
@@ -847,11 +1162,14 @@ const MessageBubble = ({
 
               {isOwn && message.text && (
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileSheetOpen(false);
+                    setShowMoreEmojis(false);
                     setIsEditing(true);
                   }}
-                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+                  aria-label="Edit message"
+                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors touch-manipulation cursor-pointer"
                 >
                   <Edit2 className="w-5 h-5 text-slate-500" />
                   <span>Edit Message</span>
@@ -862,22 +1180,28 @@ const MessageBubble = ({
 
               {isOwn ? (
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileSheetOpen(false);
+                    setShowMoreEmojis(false);
                     setDeleteModalOpen(true);
                   }}
-                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                  aria-label="Delete message"
+                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors touch-manipulation cursor-pointer"
                 >
                   <Trash2 className="w-5 h-5 text-rose-500" />
                   <span>Delete Message</span>
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={() => {
                     setMobileSheetOpen(false);
+                    setShowMoreEmojis(false);
                     setReportModalOpen(true);
                   }}
-                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
+                  aria-label="Report message"
+                  className="w-full min-h-[44px] flex items-center space-x-3 px-4 py-2.5 rounded-2xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors touch-manipulation cursor-pointer"
                 >
                   <ShieldAlert className="w-5 h-5 text-rose-500" />
                   <span>Report Message</span>
@@ -886,8 +1210,12 @@ const MessageBubble = ({
             </div>
 
             <button
-              onClick={() => setMobileSheetOpen(false)}
-              className="w-full mt-3 py-3 rounded-2xl bg-slate-100 dark:bg-dark-hover text-slate-700 dark:text-slate-300 font-bold text-sm min-h-[44px] flex items-center justify-center transition-colors"
+              type="button"
+              onClick={() => {
+                setMobileSheetOpen(false);
+                setShowMoreEmojis(false);
+              }}
+              className="w-full mt-3 py-3 rounded-2xl bg-slate-100 dark:bg-dark-hover text-slate-700 dark:text-slate-300 font-bold text-sm min-h-[44px] flex items-center justify-center transition-colors touch-manipulation cursor-pointer"
             >
               Cancel
             </button>

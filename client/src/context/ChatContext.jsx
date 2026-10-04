@@ -409,6 +409,7 @@ export const ChatProvider = ({ children }) => {
     socket.on('typing:stop', handleUserStoppedTyping);
     socket.on('messageReaction', handleMessageReaction);
     socket.on('message:reaction', handleMessageReaction);
+    socket.on('message:reactionUpdated', handleMessageReaction);
     socket.on('messageEdited', handleMessageEdited);
     socket.on('message:edited', handleMessageEdited);
     socket.on('messageDeleted', handleMessageDeleted);
@@ -427,6 +428,7 @@ export const ChatProvider = ({ children }) => {
       socket.off('typing:stop', handleUserStoppedTyping);
       socket.off('messageReaction', handleMessageReaction);
       socket.off('message:reaction', handleMessageReaction);
+      socket.off('message:reactionUpdated', handleMessageReaction);
       socket.off('messageEdited', handleMessageEdited);
       socket.off('message:edited', handleMessageEdited);
       socket.off('messageDeleted', handleMessageDeleted);
@@ -472,11 +474,14 @@ export const ChatProvider = ({ children }) => {
           prev.map((m) => (m._id === messageId ? res.data.message : m))
         );
         if (socket && activeConversation) {
-          socket.emit('messageReaction', {
+          const payload = {
             conversationId: activeConversation._id,
             messageId,
             reactions: res.data.reactions,
-          });
+          };
+          socket.emit('messageReaction', payload);
+          socket.emit('message:reaction', payload);
+          socket.emit('message:reactionUpdated', payload);
         }
       }
     } catch (err) {
