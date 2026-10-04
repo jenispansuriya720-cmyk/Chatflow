@@ -84,10 +84,7 @@ const MessageInput = () => {
   
   // Pending files before upload: [{ file, previewUrl, name, size, type, isImage }]
   const [pendingFiles, setPendingFiles] = useState([]);
-  
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadError, setUploadError] = useState('');
+  const [validationError, setValidationError] = useState('');
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -196,12 +193,12 @@ const MessageInput = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploadError('');
+    setValidationError('');
     setShowAttachMenu(false);
 
     // 1. Empty file validation
     if (file.size === 0) {
-      setUploadError('The selected file is empty.');
+      setValidationError('The selected file is empty.');
       clearFileInputs();
       return;
     }
@@ -212,20 +209,20 @@ const MessageInput = () => {
     // 2. Validate image format if selecting an image
     if (isImage) {
       if (!ALLOWED_IMAGE_EXTS.includes(ext)) {
-        setUploadError('Unsupported image format. Allowed: JPG, PNG, WEBP, GIF.');
+        setValidationError('Unsupported image format. Allowed: JPG, PNG, WEBP, GIF.');
         clearFileInputs();
         return;
       }
 
       if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        setUploadError(`Image is too large (${formatFileSize(file.size)}). Limit is 20MB.`);
+        setValidationError(`Image is too large (${formatFileSize(file.size)}). Limit is 20MB.`);
         clearFileInputs();
         return;
       }
     } else {
       // General media limit: 50MB
       if (file.size > 50 * 1024 * 1024) {
-        setUploadError('File size exceeds 50MB limit.');
+        setValidationError('File size exceeds 50MB limit.');
         clearFileInputs();
         return;
       }
@@ -265,94 +262,28 @@ const MessageInput = () => {
     clearFileInputs();
   };
 
-  // Send message flow: Upload pending file(s) to real storage -> Create message in DB -> Socket delivery
-  const handleSend = async () => {
-    if ((!text.trim() && pendingFiles.length === 0) || isUploading) return;
+  // Instant optimistic chat send flow (Sections 1, 2, 3, 5, 6, 7)
+  const handleSend = () => {
+    if (!text.trim() && pendingFiles.length === 0) return;
 
-    try {
-      setIsUploading(true);
-      setUploadError('');
-      setUploadProgress(10);
+    const currentText = text.trim();
+    const filesToSend = [...pendingFiles];
 
-      const uploadedAttachments = [];
-      let primaryImageUrl = '';
-
-      // Upload any pending files to real media storage first
-      for (let i = 0; i < pendingFiles.length; i++) {
-        const item = pendingFiles[i];
-        const formData = new FormData();
-        formData.append('file', item.file);
-        formData.append('entityType', 'chat');
-
-        const uploadEndpoint = item.isImage ? '/upload/chat-image' : '/upload';
-
-        const res = await api.post(uploadEndpoint, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          onUploadProgress: (progressEvent) => {
-            if (progressEvent.total) {
-              const currentStep = (i / pendingFiles.length) * 80;
-              const stepProgress = ((progressEvent.loaded / progressEvent.total) * 80) / pendingFiles.length;
-              setUploadProgress(Math.min(85, Math.round(currentStep + stepProgress)));
-            }
-          },
-        });
-
-        if (!res.data.success || !res.data.file?.url) {
-          throw new Error('Image upload failed. Could not verify storage URL.');
-        }
-
-        const uploaded = res.data.file;
-        uploadedAttachments.push({
-          fileType: uploaded.fileType || (item.isImage ? 'image' : 'document'),
-          url: uploaded.url,
-          publicId: uploaded.publicId || '',
-          name: uploaded.name || item.name,
-          size: uploaded.size || item.size,
-          mimeType: uploaded.mimeType || item.mimeType,
-        });
-
-        if (item.isImage && !primaryImageUrl) {
-          primaryImageUrl = uploaded.url;
-        }
-      }
-
-      setUploadProgress(90);
-
-      // Determine message type
-      const hasImage = uploadedAttachments.some((a) => a.fileType === 'image') || Boolean(primaryImageUrl);
-      const messageType = hasImage ? 'image' : uploadedAttachments.length > 0 ? 'media' : 'text';
-
-      // Send to server & Socket.IO (never emit fake message before upload confirmed)
-      await sendMessage({
-        text: text.trim(),
-        attachments: uploadedAttachments,
-        type: messageType,
-        imageUrl: primaryImageUrl,
-      });
-
-      // Cleanup on success
-      pendingFiles.forEach((p) => {
-        if (p.previewUrl && p.previewUrl.startsWith('blob:')) {
-          URL.revokeObjectURL(p.previewUrl);
-        }
-      });
-      setPendingFiles([]);
-      setText('');
-      setUploadProgress(100);
-      sendTypingStatus(false);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
-    } catch (err) {
-      console.error('Failed to send message:', err);
-      const msg =
-        err.response?.data?.message ||
-        err.message ||
-        'Image upload failed. Please try again.';
-      setUploadError(msg);
-    } finally {
-      setIsUploading(false);
+    // Clear composer immediately for fast, non-blocking UI
+    setText('');
+    setPendingFiles([]);
+    setValidationError('');
+    clearFileInputs();
+    sendTypingStatus(false);
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
     }
+
+    // Dispatch to optimistic message system (adds temporary message with preview and uploads in background)
+    sendMessage({
+      text: currentText,
+      pendingFiles: filesToSend,
+    });
   };
 
   // Send voice note
@@ -426,48 +357,21 @@ const MessageInput = () => {
         />
       ) : (
         <>
-          {/* Upload Error Banner with Retry (Requirement 13) */}
-          {uploadError && (
-            <div className="flex items-center justify-between px-3 py-2 mb-2 bg-rose-500/10 border border-rose-500/30 rounded-2xl text-xs text-rose-600 dark:text-rose-400 animate-slide-up">
+          {/* File Pre-Send Validation Alert */}
+          {validationError && (
+            <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-600 dark:text-rose-400 animate-slide-up">
               <div className="flex items-center space-x-2 flex-1 pr-2">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{uploadError}</span>
+                <span>{validationError}</span>
               </div>
-              <div className="flex items-center space-x-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  className="flex items-center space-x-1 px-2 py-0.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-medium text-[11px]"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Retry</span>
-                </button>
-                <button
-                  onClick={() => setUploadError('')}
-                  className="p-1 hover:text-rose-800 dark:hover:text-rose-200"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Upload Progress Banner */}
-          {isUploading && (
-            <div className="px-3 py-2 mb-2 bg-brand-500/10 border border-brand-500/20 rounded-2xl space-y-1.5 animate-pulse">
-              <div className="flex items-center justify-between text-xs font-semibold text-brand-600 dark:text-brand-400">
-                <span className="flex items-center space-x-2">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Uploading image to server...</span>
-                </span>
-                <span>{uploadProgress}%</span>
-              </div>
-              <div className="w-full bg-slate-200 dark:bg-dark-border rounded-full h-1 overflow-hidden">
-                <div
-                  className="bg-brand-600 h-1 rounded-full transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
+              <button
+                type="button"
+                onClick={() => setValidationError('')}
+                className="p-1 hover:text-rose-800 dark:hover:text-rose-200 cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
@@ -564,10 +468,9 @@ const MessageInput = () => {
 
                   <button
                     type="button"
-                    disabled={isUploading}
                     onClick={() => removePendingFile(idx)}
                     aria-label="Remove attachment"
-                    className="p-1.5 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors disabled:opacity-40"
+                    className="p-1.5 rounded-full text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"
                     title="Remove attachment"
                   >
                     <X className="w-4 h-4" />
@@ -584,11 +487,10 @@ const MessageInput = () => {
               <button
                 type="button"
                 onClick={handlePlusMenu}
-                disabled={isUploading}
                 aria-label="Open attachment menu"
                 aria-expanded={showAttachMenu}
                 aria-haspopup="true"
-                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-white rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-all duration-150 disabled:opacity-50 select-none cursor-pointer touch-manipulation z-20"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-500 hover:text-brand-600 dark:text-dark-muted dark:hover:text-white rounded-2xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-all duration-150 select-none cursor-pointer touch-manipulation z-20"
                 title="Open attachment menu"
               >
                 <Plus
@@ -717,9 +619,8 @@ const MessageInput = () => {
             <div className="relative" ref={emojiPickerRef}>
               <button
                 type="button"
-                disabled={isUploading}
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-amber-500 dark:text-dark-muted dark:hover:text-amber-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors disabled:opacity-50"
+                className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-slate-500 hover:text-amber-500 dark:text-dark-muted dark:hover:text-amber-400 rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
                 title="Insert emoji"
               >
                 <Smile className="w-5 h-5" />
@@ -758,7 +659,6 @@ const MessageInput = () => {
               <textarea
                 ref={textareaRef}
                 value={text}
-                disabled={isUploading}
                 onChange={handleTextChange}
                 onKeyDown={handleKeyDown}
                 placeholder={
@@ -772,7 +672,7 @@ const MessageInput = () => {
                   color: 'var(--chat-input-text, #0f172a)',
                   borderColor: 'var(--chat-border, transparent)',
                 }}
-                className="w-full px-4 py-2.5 rounded-2xl text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 placeholder-slate-400 dark:placeholder-dark-muted resize-none max-h-28 transition-all disabled:opacity-60"
+                className="w-full px-4 py-2.5 rounded-2xl text-sm focus:outline-none focus:ring-1 focus:ring-brand-500 placeholder-slate-400 dark:placeholder-dark-muted resize-none max-h-28 transition-all"
               />
             </div>
 
@@ -781,18 +681,13 @@ const MessageInput = () => {
               <button
                 type="button"
                 onClick={handleSend}
-                disabled={isUploading}
                 style={{
                   background: 'var(--chat-accent, #4f46e5)',
                 }}
-                className="w-10 h-10 rounded-2xl text-white flex items-center justify-center shadow-md transition-all active:scale-95 disabled:opacity-50"
+                className="w-10 h-10 rounded-2xl text-white flex items-center justify-center shadow-md transition-all active:scale-95 cursor-pointer"
                 title="Send Message"
               >
-                {isUploading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4 ml-0.5" />
-                )}
+                <Send className="w-4 h-4 ml-0.5" />
               </button>
             ) : (
               <button

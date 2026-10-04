@@ -18,6 +18,8 @@ import {
   Clock,
   ShieldAlert,
   Plus,
+  Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -522,11 +524,12 @@ const MessageBubble = ({
                     {message.imageUrl &&
                       (!message.attachments ||
                         !message.attachments.some((a) => a.url === message.imageUrl)) && (
-                        <div className="rounded-xl overflow-hidden shadow-xs">
+                        <div className="rounded-xl overflow-hidden shadow-xs relative">
                           <img
                             src={message.imageUrl}
                             alt="Photo"
                             onClick={() =>
+                              message.status !== 'sending' &&
                               onOpenMedia &&
                               onOpenMedia({
                                 url: message.imageUrl,
@@ -534,9 +537,42 @@ const MessageBubble = ({
                                 name: 'Photo',
                               })
                             }
-                            className="max-h-80 w-auto max-w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
+                            className={`max-h-80 w-auto max-w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity ${
+                              message.status === 'sending' ? 'opacity-90' : ''
+                            }`}
                             loading="lazy"
                           />
+                          {/* Lightweight Sending badge on optimistic image preview */}
+                          {message.status === 'sending' && (
+                            <div className="absolute inset-0 bg-black/25 backdrop-blur-[0.5px] rounded-xl flex items-center justify-center pointer-events-none">
+                              <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-black/65 text-white text-xs font-medium backdrop-blur-md shadow-sm animate-fade-in">
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                                <span>Sending...</span>
+                              </div>
+                            </div>
+                          )}
+                          {/* Failed badge with retry button */}
+                          {message.status === 'failed' && (
+                            <div className="absolute inset-0 bg-black/65 rounded-xl flex flex-col items-center justify-center p-3 text-center text-white z-10 animate-fade-in">
+                              <div className="flex items-center space-x-1.5 text-rose-300 text-xs font-semibold mb-2">
+                                <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                                <span>Upload failed</span>
+                              </div>
+                              {message.onRetry && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    message.onRetry();
+                                  }}
+                                  className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+                                >
+                                  <RotateCcw className="w-3 h-3" />
+                                  <span>Retry</span>
+                                </button>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -545,52 +581,104 @@ const MessageBubble = ({
                         const isImg =
                           att.fileType === 'image' ||
                           att.mimeType?.startsWith('image/') ||
-                          Boolean(att.url?.match(/\.(jpeg|jpg|gif|png|webp)/i));
+                          Boolean(att.url?.match(/\.(jpeg|jpg|gif|png|webp)/i)) ||
+                          att.url?.startsWith('blob:');
 
                         return (
-                          <div key={idx} className="rounded-xl overflow-hidden shadow-xs">
+                          <div key={idx} className="rounded-xl overflow-hidden shadow-xs relative">
                             {isImg ? (
-                              <img
-                                src={att.url}
-                                alt={att.name || 'Photo'}
-                                onClick={() =>
-                                  onOpenMedia &&
-                                  onOpenMedia({
-                                    url: att.url,
-                                    fileType: 'image',
-                                    name: att.name || 'Photo',
-                                  })
-                                }
-                                className="max-h-80 w-auto max-w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity"
-                                loading="lazy"
-                              />
+                              <>
+                                <img
+                                  src={att.url}
+                                  alt={att.name || 'Photo'}
+                                  onClick={() =>
+                                    onOpenMedia &&
+                                    onOpenMedia({
+                                      url: att.url,
+                                      fileType: 'image',
+                                      name: att.name || 'Photo',
+                                    })
+                                  }
+                                  className={`max-h-80 w-auto max-w-full object-cover rounded-xl cursor-pointer hover:opacity-95 transition-opacity ${
+                                    message.status === 'sending' ? 'opacity-90' : ''
+                                  }`}
+                                  loading="lazy"
+                                />
+                                {/* Lightweight Sending badge on optimistic image preview */}
+                                {message.status === 'sending' && (
+                                  <div className="absolute inset-0 bg-black/25 backdrop-blur-[0.5px] rounded-xl flex items-center justify-center pointer-events-none">
+                                    <div className="flex items-center space-x-1.5 px-3 py-1 rounded-full bg-black/65 text-white text-xs font-medium backdrop-blur-md shadow-sm animate-fade-in">
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                                      <span>Sending...</span>
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Failed badge with retry button */}
+                                {message.status === 'failed' && (
+                                  <div className="absolute inset-0 bg-black/65 rounded-xl flex flex-col items-center justify-center p-3 text-center text-white z-10 animate-fade-in">
+                                    <div className="flex items-center space-x-1.5 text-rose-300 text-xs font-semibold mb-2">
+                                      <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0" />
+                                      <span>Upload failed</span>
+                                    </div>
+                                    {message.onRetry && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          message.onRetry();
+                                        }}
+                                        className="px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md cursor-pointer active:scale-95"
+                                      >
+                                        <RotateCcw className="w-3 h-3" />
+                                        <span>Retry</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                              </>
                             ) : att.fileType === 'video' ? (
-                              <video
-                                src={att.url}
-                                controls
-                                className="max-h-80 w-full rounded-xl"
-                              />
+                              <div className="relative">
+                                <video
+                                  src={att.url}
+                                  controls
+                                  className="max-h-80 w-full rounded-xl"
+                                />
+                                {message.status === 'sending' && (
+                                  <div className="absolute top-2 right-2 flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-black/70 text-white text-[11px] font-medium backdrop-blur-sm pointer-events-none">
+                                    <Loader2 className="w-3 h-3 animate-spin text-white" />
+                                    <span>Sending...</span>
+                                  </div>
+                                )}
+                              </div>
                             ) : (
-                              <a
-                                href={att.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                download={att.name}
-                                className={`flex items-center space-x-3 p-3 rounded-xl transition-colors ${
-                                  isOwn
-                                    ? 'bg-black/20 hover:bg-black/30'
-                                    : 'bg-slate-100 dark:bg-dark-hover hover:bg-slate-200'
-                                }`}
-                              >
-                                <FileText className="w-6 h-6 flex-shrink-0 text-brand-400" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-xs font-semibold truncate">{att.name}</p>
-                                  <p className="text-[10px] opacity-75">
-                                    {Math.round((att.size || 0) / 1024)} KB
-                                  </p>
-                                </div>
-                                <Download className="w-4 h-4 flex-shrink-0 opacity-75" />
-                              </a>
+                              <div className="relative">
+                                <a
+                                  href={att.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  download={att.name}
+                                  className={`flex items-center space-x-3 p-3 rounded-xl transition-colors ${
+                                    isOwn
+                                      ? 'bg-black/20 hover:bg-black/30'
+                                      : 'bg-slate-100 dark:bg-dark-hover hover:bg-slate-200'
+                                  }`}
+                                >
+                                  <FileText className="w-6 h-6 flex-shrink-0 text-brand-400" />
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold truncate">{att.name}</p>
+                                    <p className="text-[10px] opacity-75">
+                                      {Math.round((att.size || 0) / 1024)} KB
+                                    </p>
+                                  </div>
+                                  <Download className="w-4 h-4 flex-shrink-0 opacity-75" />
+                                </a>
+                                {message.status === 'sending' && (
+                                  <div className="absolute top-2 right-2 flex items-center space-x-1 px-2 py-0.5 rounded-full bg-black/60 text-white text-[10px] font-medium pointer-events-none">
+                                    <Loader2 className="w-2.5 h-2.5 animate-spin text-white" />
+                                    <span>Sending...</span>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         );
@@ -708,6 +796,29 @@ const MessageBubble = ({
                     {message.text}
                   </p>
                 )}
+
+                {/* Failure notice for text/standalone messages */}
+                {message.status === 'failed' &&
+                  !message.imageUrl &&
+                  (!message.attachments || message.attachments.length === 0) && (
+                    <div className="flex items-center space-x-2 pt-1.5 pb-0.5 text-xs text-rose-300 font-medium">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />
+                      <span>Failed to send</span>
+                      {message.onRetry && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            message.onRetry();
+                          }}
+                          className="underline font-bold hover:text-white flex items-center space-x-1 cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3 inline" />
+                          <span>Retry</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
               </>
             )}
 
@@ -730,7 +841,34 @@ const MessageBubble = ({
               {isOwn && !message.isDeleted && (
                 <span className="ml-1 inline-flex items-center space-x-0.5">
                   {message.status === 'sending' ? (
-                    <Clock className="w-3 h-3 opacity-70 animate-pulse" title="Sending..." />
+                    <span
+                      className="inline-flex items-center space-x-1 opacity-80"
+                      title="Sending..."
+                    >
+                      <Clock className="w-3 h-3 animate-pulse" />
+                      <span className="text-[9.5px]">Sending...</span>
+                    </span>
+                  ) : message.status === 'failed' ? (
+                    <span
+                      className="inline-flex items-center space-x-1 text-rose-300 font-semibold"
+                      title="Failed"
+                    >
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                      <span className="text-[9.5px]">Failed</span>
+                      {message.onRetry && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            message.onRetry();
+                          }}
+                          className="ml-1 px-1.5 py-0.5 rounded bg-rose-600/80 hover:bg-rose-500 text-white text-[9px] flex items-center space-x-0.5 transition-colors cursor-pointer"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          <span>Retry</span>
+                        </button>
+                      )}
+                    </span>
                   ) : message.status === 'read' ? (
                     <span
                       className="inline-flex items-center space-x-0.5 text-cyan-300 font-semibold"

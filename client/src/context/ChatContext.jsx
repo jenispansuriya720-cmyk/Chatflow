@@ -96,10 +96,11 @@ export const ChatProvider = ({ children }) => {
     [conversations, socket]
   );
 
-  // Send a message with optimistic update and deduplication
+  // Send a message with instant optimistic update, background media upload, and retry on failure
   const sendMessage = async ({
     text,
     attachments = [],
+    pendingFiles = [],
     voiceData = null,
     type = 'text',
     sharedContent = null,
@@ -109,21 +110,183 @@ export const ChatProvider = ({ children }) => {
   }) => {
     if (!activeConversation) return;
 
+    const convId = activeConversation._id;
     const clientMessageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const tempId = `temp_${Date.now()}`;
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
     // Other participant in direct chat
     const otherParticipant = activeConversation.type === 'direct'
       ? activeConversation.participants?.find((p) => (p._id || p) !== user?._id)
       : null;
 
-    const resolvedImg = imageUrl || attachments?.find((a) => a.fileType === 'image')?.url || '';
+    // Generate local preview attachments for any pending files
+    let previewAttachments = [...(attachments || [])];
+    let resolvedImg = imageUrl || '';
 
-    // Optimistic message
+    if (pendingFiles && pendingFiles.length > 0) {
+      const generatedPreviews = pendingFiles.map((p) => {
+        const fileObj = p.file || p;
+        const isImage = p.isImage || p.mimeType?.startsWith('image/') || fileObj.type?.startsWith('image/');
+        const isVideo = p.mimeType?.startsWith('video/') || fileObj.type?.startsWith('video/');
+        const previewUrl = p.previewUrl || (fileObj instanceof Blob ? URL.createObjectURL(fileObj) : '');
+        return {
+          fileType: isImage ? 'image' : isVideo ? 'video' : 'document',
+          url: previewUrl,
+          name: p.name || fileObj.name || 'Attachment',
+          size: p.size || fileObj.size || 0,
+          mimeType: p.mimeType || fileObj.type || '',
+          isLocalPreview: true,
+        };
+      });
+      previewAttachments = [...previewAttachments, ...generatedPreviews];
+      if (!resolvedImg) {
+        const firstImg = previewAttachments.find((a) => a.fileType === 'image');
+        if (firstImg) resolvedImg = firstImg.url;
+      }
+    } else if (!resolvedImg && attachments?.length > 0) {
+      const firstImg = attachments.find((a) => a.fileType === 'image');
+      if (firstImg) resolvedImg = firstImg.url;
+    }
+
+    const resolvedType = resolvedImg ? 'image' : previewAttachments.length > 0 ? 'media' : type;
+
+    const previousReply = replyingTo;
+    setReplyingTo(null);
+
+    // Reusable background execution function
+    const executeBackgroundSend = async () => {
+      try {
+        let uploadedAttachments = [...(attachments || [])];
+        let primaryImageUrl = imageUrl || '';
+
+        // If there are pending files, upload them in background to real storage
+        if (pendingFiles && pendingFiles.length > 0) {
+          for (let i = 0; i < pendingFiles.length; i++) {
+            const item = pendingFiles[i];
+            const fileObj = item.file || item;
+            const formData = new FormData();
+            formData.append('file', fileObj);
+            formData.append('entityType', 'chat');
+
+            const isImage = item.isImage || item.mimeType?.startsWith('image/') || fileObj.type?.startsWith('image/');
+            const uploadEndpoint = isImage ? '/upload/chat-image' : '/upload';
+
+            const res = await api.post(uploadEndpoint, formData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            });
+
+            if (!res.data.success || !res.data.file?.url) {
+              throw new Error('Image upload failed. Could not verify storage URL.');
+            }
+
+            const uploaded = res.data.file;
+            uploadedAttachments.push({
+              fileType: uploaded.fileType || (isImage ? 'image' : 'document'),
+              url: uploaded.url,
+              publicId: uploaded.publicId || '',
+              name: uploaded.name || item.name || fileObj.name,
+              size: uploaded.size || item.size || fileObj.size,
+              mimeType: uploaded.mimeType || item.mimeType || fileObj.type,
+            });
+
+            if (isImage && !primaryImageUrl) {
+              primaryImageUrl = uploaded.url;
+            }
+          }
+        }
+
+        // Cleanup local preview URLs
+        if (pendingFiles && pendingFiles.length > 0) {
+          pendingFiles.forEach((p) => {
+            if (p.previewUrl && p.previewUrl.startsWith('blob:')) {
+              URL.revokeObjectURL(p.previewUrl);
+            }
+          });
+        }
+
+        const hasImage = uploadedAttachments.some((a) => a.fileType === 'image') || Boolean(primaryImageUrl);
+        const finalMessageType = hasImage ? 'image' : uploadedAttachments.length > 0 ? 'media' : type;
+
+        const payload = {
+          conversationId: convId,
+          text: text || '',
+          type: finalMessageType,
+          imageUrl: primaryImageUrl,
+          sharedContent,
+          pollData,
+          eventData,
+          attachments: uploadedAttachments,
+          voiceData,
+          replyTo: previousReply ? (previousReply._id || previousReply) : undefined,
+          replyToMessageId: previousReply ? (previousReply._id || previousReply) : undefined,
+          clientMessageId,
+        };
+
+        const res = await api.post('/messages', payload);
+        if (res.data.success) {
+          const sentMsg = res.data.message;
+
+          // Replace temporary message with persistent message
+          setMessages((prev) =>
+            prev.map((m) =>
+              m._id === tempId || (m.clientMessageId && m.clientMessageId === clientMessageId)
+                ? sentMsg
+                : m
+            )
+          );
+
+          // Emit to recipient via Socket.IO
+          if (socket) {
+            socket.emit('sendMessage', sentMsg);
+          }
+
+          // Update lastMessage in conversation list
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c._id === convId) {
+                return {
+                  ...c,
+                  lastMessage: sentMsg,
+                  updatedAt: new Date().toISOString(),
+                };
+              }
+              return c;
+            })
+          );
+
+          return sentMsg;
+        }
+      } catch (err) {
+        console.error('Failed to send message:', err);
+        // Mark message as failed with retry callback
+        setMessages((prev) =>
+          prev.map((m) =>
+            m._id === tempId || (m.clientMessageId && m.clientMessageId === clientMessageId)
+              ? {
+                  ...m,
+                  status: 'failed',
+                  onRetry: () => {
+                    setMessages((current) =>
+                      current.map((item) =>
+                        item._id === tempId || (item.clientMessageId && item.clientMessageId === clientMessageId)
+                          ? { ...item, status: 'sending' }
+                          : item
+                      )
+                    );
+                    executeBackgroundSend();
+                  },
+                }
+              : m
+          )
+        );
+      }
+    };
+
+    // Optimistic message added to chat immediately
     const optimisticMsg = {
       _id: tempId,
       clientMessageId,
-      conversation: activeConversation._id,
+      conversation: convId,
       sender: {
         _id: user._id,
         fullName: user.fullName,
@@ -132,78 +295,24 @@ export const ChatProvider = ({ children }) => {
       },
       receiver: otherParticipant?._id || otherParticipant,
       text: text || '',
-      type,
+      type: resolvedType,
       imageUrl: resolvedImg,
       sharedContent,
       pollData,
       eventData,
-      attachments: attachments || [],
+      attachments: previewAttachments,
       voiceData: voiceData || { duration: 0, waveform: [] },
-      replyTo: replyingTo || null,
+      replyTo: previousReply || null,
       status: 'sending',
       createdAt: new Date().toISOString(),
+      onRetry: () => executeBackgroundSend(),
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
-    const previousReply = replyingTo;
-    setReplyingTo(null);
 
-    try {
-      const payload = {
-        conversationId: activeConversation._id,
-        text,
-        type,
-        imageUrl: resolvedImg,
-        sharedContent,
-        pollData,
-        eventData,
-        attachments,
-        voiceData,
-        replyTo: previousReply ? (previousReply._id || previousReply) : undefined,
-        replyToMessageId: previousReply ? (previousReply._id || previousReply) : undefined,
-        clientMessageId,
-      };
-
-      const res = await api.post('/messages', payload);
-      if (res.data.success) {
-        const sentMsg = res.data.message;
-
-        // Replace temporary optimistic message with persistent message
-        setMessages((prev) =>
-          prev.map((m) =>
-            m._id === tempId || (m.clientMessageId && m.clientMessageId === clientMessageId)
-              ? sentMsg
-              : m
-          )
-        );
-
-        // Emit through socket for real-time notification
-        if (socket) {
-          socket.emit('sendMessage', sentMsg);
-        }
-
-        // Update lastMessage in conversation list
-        setConversations((prev) =>
-          prev.map((c) => {
-            if (c._id === activeConversation._id) {
-              return {
-                ...c,
-                lastMessage: sentMsg,
-                updatedAt: new Date().toISOString(),
-              };
-            }
-            return c;
-          })
-        );
-
-        return sentMsg;
-      }
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      // Remove optimistic message if send failed
-      setMessages((prev) => prev.filter((m) => m._id !== tempId));
-      throw error;
-    }
+    // Fire background task (non-blocking for UI)
+    executeBackgroundSend();
+    return optimisticMsg;
   };
 
   // Socket event listeners for real-time synchronization
