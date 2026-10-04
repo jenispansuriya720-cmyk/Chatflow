@@ -25,7 +25,6 @@ const liveRoutes = require('./routes/liveRoutes');
 const callRoutes = require('./routes/callRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
-const { verifySmtpConnection } = require('./services/emailService');
 
 const app = express();
 const server = http.createServer(app);
@@ -110,7 +109,6 @@ app.get('/api/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
-app.post('/api/admin/test-email', require('./controllers/authController').testSmtpEmail);
 app.use('/api/users', userRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/messages', messageRoutes);
@@ -136,7 +134,6 @@ const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
   await connectDB();
-  verifySmtpConnection().catch(() => {});
   server.listen(PORT, () => {
     console.log(`[ChatFlow Server] Running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   });

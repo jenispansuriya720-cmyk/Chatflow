@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Post = require('../models/Post');
@@ -9,14 +8,6 @@ const Follow = require('../models/Follow');
 const Notification = require('../models/Notification');
 const AuditLog = require('../models/AuditLog');
 const { cleanupMedia } = require('../utils/mediaCleanup');
-const {
-  sendVerificationEmail,
-  sendPasswordResetEmail,
-  sendPasswordChangedEmail,
-  sendAccountDeletedEmail,
-  getSmtpStatus,
-  verifySmtpConnection,
-} = require('../services/emailService');
 
 // Helper to generate JWT token
 const generateToken = (id) => {
@@ -26,7 +17,7 @@ const generateToken = (id) => {
 };
 
 /**
- * @desc    Register a new user & send real SMTP verification email
+ * @desc    Register a new user
  * @route   POST /api/auth/register
  * @access  Public
  */
@@ -70,18 +61,9 @@ const register = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Username is already taken.' });
     }
 
-    // Generate cryptographically secure verification token
-    const rawVerificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenHash = crypto
-      .createHash('sha256')
-      .update(rawVerificationToken)
-      .digest('hex');
-    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
     // Default avatar if none provided
     const avatarUrl = profilePicture || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`;
 
-    // Create user in unverified state
     const user = await User.create({
       fullName: fullName.trim(),
       username: cleanUsername,
@@ -91,282 +73,16 @@ const register = async (req, res, next) => {
       profilePicture: avatarUrl,
       isOnline: true,
       lastSeen: new Date(),
-      emailVerified: false,
-      emailVerificationTokenHash: verificationTokenHash,
-      emailVerificationExpires: verificationExpires,
     });
-
-    // Send REAL SMTP verification email
-    try {
-      await sendVerificationEmail({
-        to: cleanEmail,
-        name: user.fullName || user.username,
-        token: rawVerificationToken,
-        req,
-      });
-    } catch (smtpErr) {
-      console.error('[Auth Register] SMTP send failure:', {
-        message: smtpErr.message,
-        code: smtpErr.code,
-        command: smtpErr.command,
-        response: smtpErr.response,
-        responseCode: smtpErr.responseCode,
-      });
-      // Rollback created user so inconsistent state is avoided
-      await User.findByIdAndDelete(user._id);
-      return res.status(503).json({
-        success: false,
-        message: 'Unable to send the verification email right now. Please try again.',
-      });
-    }
 
     const token = generateToken(user._id);
     const userResponse = await User.findById(user._id).select('-password');
 
     res.status(201).json({
       success: true,
-      message: 'Check your email to verify your ChatFlow account.',
-      requireVerification: true,
+      message: 'Account registered successfully.',
       token,
       user: userResponse,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Verify email address using token
- * @route   GET /api/auth/verify-email
- * @access  Public
- */
-const verifyEmail = async (req, res, next) => {
-  try {
-    const { token } = req.query;
-
-    if (!token) {
-      return res.status(400).json({
-        success: false,
-        message: 'Verification token is required.',
-      });
-    }
-
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    const user = await User.findOne({
-      emailVerificationTokenHash: tokenHash,
-      emailVerificationExpires: { $gt: new Date() },
-    }).select('+emailVerificationTokenHash');
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Verification token is invalid or has expired.',
-      });
-    }
-
-    user.emailVerified = true;
-    user.emailVerificationTokenHash = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Email verified successfully.',
-      user: {
-        _id: user._id,
-        email: user.email,
-        emailVerified: true,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Resend email verification link
- * @route   POST /api/auth/resend-verification
- * @access  Public
- */
-const resendVerification = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide your email address.',
-      });
-    }
-
-    const cleanEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: cleanEmail });
-
-    if (user && !user.emailVerified) {
-      const rawToken = crypto.randomBytes(32).toString('hex');
-      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-
-      user.emailVerificationTokenHash = tokenHash;
-      user.emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      await user.save();
-
-      try {
-        await sendVerificationEmail({
-          to: user.email,
-          name: user.fullName || user.username,
-          token: rawToken,
-          req,
-        });
-      } catch (smtpErr) {
-        console.error('[Auth Resend Verification] SMTP error:', {
-          message: smtpErr.message,
-          code: smtpErr.code,
-          command: smtpErr.command,
-          response: smtpErr.response,
-          responseCode: smtpErr.responseCode,
-        });
-        return res.status(503).json({
-          success: false,
-          message: 'Unable to send the email right now. Please try again.',
-        });
-      }
-    }
-
-    // Generic safe response to avoid enumeration
-    res.status(200).json({
-      success: true,
-      message: 'If an unverified account exists with that email, a verification link has been sent.',
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Forgot password - send reset link via SMTP
- * @route   POST /api/auth/forgot-password
- * @access  Public
- */
-const forgotPassword = async (req, res, next) => {
-  try {
-    const { email } = req.body;
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: 'Enter your email address.',
-      });
-    }
-
-    const cleanEmail = email.toLowerCase().trim();
-    const user = await User.findOne({ email: cleanEmail });
-
-    if (user) {
-      const rawToken = crypto.randomBytes(32).toString('hex');
-      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-
-      user.passwordResetTokenHash = tokenHash;
-      user.passwordResetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-      await user.save();
-
-      try {
-        await sendPasswordResetEmail({
-          to: user.email,
-          name: user.fullName || user.username,
-          token: rawToken,
-          req,
-        });
-      } catch (smtpErr) {
-        console.error('[Auth Forgot Password] SMTP send failed:', {
-          message: smtpErr.message,
-          code: smtpErr.code,
-          command: smtpErr.command,
-          response: smtpErr.response,
-          responseCode: smtpErr.responseCode,
-        });
-        return res.status(503).json({
-          success: false,
-          message: 'Unable to send the email right now. Please try again.',
-        });
-      }
-    }
-
-    // Security requirement: Generic response to prevent account enumeration
-    res.status(200).json({
-      success: true,
-      message: "If an account exists, you'll receive password reset instructions.",
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Reset password using secure token
- * @route   POST /api/auth/reset-password
- * @access  Public
- */
-const resetPassword = async (req, res, next) => {
-  try {
-    const { token, newPassword, confirmPassword } = req.body;
-
-    if (!token) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password reset token is required.',
-      });
-    }
-
-    if (!newPassword || newPassword.length < 6) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 6 characters.',
-      });
-    }
-
-    if (confirmPassword && newPassword !== confirmPassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'New passwords do not match.',
-      });
-    }
-
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    const user = await User.findOne({
-      passwordResetTokenHash: tokenHash,
-      passwordResetExpires: { $gt: new Date() },
-    }).select('+passwordResetTokenHash');
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password reset link is invalid or has expired.',
-      });
-    }
-
-    // Set new password (bcrypt pre-save hook will hash it)
-    user.password = newPassword;
-    user.passwordResetTokenHash = undefined;
-    user.passwordResetExpires = undefined;
-    user.sessions = []; // Revoke active sessions for security
-    await user.save();
-
-    // Send real SMTP security notification
-    try {
-      await sendPasswordChangedEmail({
-        to: user.email,
-        name: user.fullName || user.username,
-        timestamp: new Date().toUTCString(),
-      });
-    } catch (emailErr) {
-      console.error('[Auth Reset Password] Security notification error:', emailErr.message);
-    }
-
-    res.status(200).json({
-      success: true,
-      message: 'Password has been reset successfully. You can now log in.',
     });
   } catch (error) {
     next(error);
@@ -470,7 +186,7 @@ const login = async (req, res, next) => {
 };
 
 /**
- * @desc    Change password for authenticated user & send real SMTP security alert
+ * @desc    Change password for authenticated user
  * @route   POST /api/auth/change-password
  * @access  Private
  */
@@ -523,17 +239,6 @@ const changePassword = async (req, res, next) => {
     user.password = newPassword;
     await user.save();
 
-    // Send real SMTP security notification
-    try {
-      await sendPasswordChangedEmail({
-        to: user.email,
-        name: user.fullName || user.username,
-        timestamp: new Date().toUTCString(),
-      });
-    } catch (emailErr) {
-      console.error('[Auth Security] Error sending password changed notification:', emailErr.message);
-    }
-
     res.status(200).json({
       success: true,
       message: 'Password changed successfully.',
@@ -544,7 +249,7 @@ const changePassword = async (req, res, next) => {
 };
 
 /**
- * @desc    Permanently delete account with password verification & send confirmation email
+ * @desc    Permanently delete account with password verification
  * @route   POST /api/auth/delete-account
  * @access  Private
  */
@@ -573,9 +278,8 @@ const deleteAccount = async (req, res, next) => {
       });
     }
 
-    // Capture required recipient information BEFORE deleting the user record
     const userEmail = user.email;
-    const userName = user.fullName || user.username;
+    const userName = user.fullName;
 
     // 1. Clean up user posts and their media
     const userPosts = await Post.find({ author: userId });
@@ -623,19 +327,9 @@ const deleteAccount = async (req, res, next) => {
     // 7. Delete the user document permanently
     await User.findByIdAndDelete(userId);
 
-    // 8. Send real SMTP security / confirmation email
-    try {
-      await sendAccountDeletedEmail({
-        to: userEmail,
-        name: userName,
-      });
-    } catch (emailErr) {
-      console.error('[Auth Security] Error sending account deleted email:', emailErr.message);
-    }
-
     res.status(200).json({
       success: true,
-      message: 'Your account has been deleted.',
+      message: 'Your ChatFlow account and personal data have been permanently deleted.',
     });
   } catch (error) {
     next(error);
@@ -682,101 +376,6 @@ const getMe = async (req, res, next) => {
   }
 };
 
-/**
- * @desc    SMTP Health Check
- * @route   GET /api/auth/smtp-health
- * @access  Private / Admin
- */
-const getSmtpHealth = async (req, res, next) => {
-  try {
-    const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.query.key;
-    const isAuthorized = req.user || (adminKey && adminKey === (process.env.JWT_SECRET || ''));
-    if (!isAuthorized) {
-      return res.status(401).json({ success: false, message: 'Unauthorized access to SMTP health check.' });
-    }
-
-    const status = getSmtpStatus();
-    const verifyResult = await verifySmtpConnection();
-
-    res.status(200).json({
-      success: true,
-      smtp: status,
-      connection: verifyResult,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * @desc    Test SMTP email sending (Admin diagnostic)
- * @route   POST /api/auth/test-email
- * @access  Private / Admin
- */
-const testSmtpEmail = async (req, res, next) => {
-  try {
-    const adminKey = req.headers['x-admin-key'] || req.query.adminKey || req.query.key;
-    const isAuthorized = req.user || (adminKey && adminKey === (process.env.JWT_SECRET || ''));
-    if (!isAuthorized) {
-      return res.status(401).json({ success: false, message: 'Unauthorized: Admin privileges or adminKey required.' });
-    }
-
-    const { to } = req.body;
-    if (!to || !to.includes('@')) {
-      return res.status(400).json({ success: false, message: 'Please provide a valid recipient email ("to").' });
-    }
-
-    const verifyResult = await verifySmtpConnection();
-    if (!verifyResult.success) {
-      return res.status(502).json({
-        success: false,
-        message: 'SMTP connection verification failed.',
-        diagnostics: verifyResult,
-      });
-    }
-
-    const { sendMail } = require('../services/emailService');
-    const sendResult = await sendMail({
-      to,
-      subject: 'ChatFlow Production SMTP Test',
-      html: `
-        <div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px;">
-          <h2 style="color: #6366f1;">ChatFlow Production SMTP Test</h2>
-          <p>Congratulations! Your production SMTP mail service is connected and operating successfully.</p>
-          <p><strong>Timestamp:</strong> ${new Date().toISOString()}</p>
-          <p><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</p>
-        </div>
-      `,
-      text: `ChatFlow Production SMTP Test\n\nYour production SMTP mail service is connected and operational.\nTimestamp: ${new Date().toISOString()}`,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: `Test email dispatched to ${to}`,
-      result: sendResult,
-    });
-  } catch (error) {
-    console.error('[SMTP Test Email] Failed:', {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      responseCode: error.responseCode,
-    });
-    res.status(500).json({
-      success: false,
-      message: 'SMTP test email failed',
-      error: {
-        message: error.message,
-        code: error.code,
-        command: error.command,
-        response: error.response,
-        responseCode: error.responseCode,
-      },
-    });
-  }
-};
-
 module.exports = {
   register,
   login,
@@ -784,10 +383,4 @@ module.exports = {
   getMe,
   changePassword,
   deleteAccount,
-  verifyEmail,
-  resendVerification,
-  forgotPassword,
-  resetPassword,
-  getSmtpHealth,
-  testSmtpEmail,
 };

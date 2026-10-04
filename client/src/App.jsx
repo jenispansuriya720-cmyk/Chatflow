@@ -11,9 +11,6 @@ import { LoadingSpinner } from './components/common/LoadingSpinner';
 
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
-import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from './pages/auth/ResetPasswordPage';
-import VerifyEmailPage from './pages/auth/VerifyEmailPage';
 
 // Pages - Social Features
 import HomePage from './pages/home/HomePage';
@@ -112,26 +109,6 @@ function App() {
                   <Route
                     path="/register"
                     element={<RegisterPage />}
-                  />
-                  <Route
-                    path="/forgot-password"
-                    element={
-                      <PublicRoute>
-                        <ForgotPasswordPage />
-                      </PublicRoute>
-                    }
-                  />
-                  <Route
-                    path="/reset-password"
-                    element={
-                      <PublicRoute>
-                        <ResetPasswordPage />
-                      </PublicRoute>
-                    }
-                  />
-                  <Route
-                    path="/verify-email"
-                    element={<VerifyEmailPage />}
                   />
                   <Route
                     path="/welcome"
