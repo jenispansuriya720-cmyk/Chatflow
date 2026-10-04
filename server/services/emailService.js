@@ -8,6 +8,8 @@ const {
 
 let transporter = null;
 let etherealAccount = null;
+let etherealFailed = false;
+let currentTransportMode = null; // 'real_smtp' | 'ethereal' | 'console'
 let isInitializing = null;
 
 /**
@@ -25,6 +27,17 @@ const cleanEnv = (val) => {
     str = str.slice(1, -1).trim();
   }
   return str;
+};
+
+/**
+ * Check if real SMTP credentials are provided in environment
+ */
+const hasRealSmtpConfig = () => {
+  const host = cleanEnv(process.env.SMTP_HOST);
+  const service = cleanEnv(process.env.SMTP_SERVICE);
+  const user = cleanEnv(process.env.SMTP_USER);
+  const pass = cleanEnv(process.env.SMTP_PASSWORD);
+  return Boolean((host || service) && user && pass);
 };
 
 /**
@@ -84,7 +97,7 @@ const logSmtpDiagnostics = () => {
   const fromName = cleanEnv(process.env.FROM_NAME);
 
   const port = Number(rawPort) || 587;
-  const isCustom = Boolean(host && user && pass);
+  const isCustom = hasRealSmtpConfig();
 
   console.log('==================================================');
   console.log('[SMTP Configuration Diagnostics]');
@@ -96,12 +109,217 @@ const logSmtpDiagnostics = () => {
   console.log(`FROM_EMAIL configured:    ${fromEmail ? `YES (${fromEmail})` : user ? `NO (auto-fallback to SMTP_USER: ${maskEmail(user)})` : 'NO'}`);
   console.log(`FROM_NAME configured:     ${fromName ? `YES (${fromName})` : 'NO (default: ChatFlow)'}`);
   console.log(`CLIENT_URL configured:    ${process.env.CLIENT_URL ? `YES (${process.env.CLIENT_URL})` : process.env.VERCEL_URL ? `YES (Vercel: https://${process.env.VERCEL_URL})` : 'NO (default: http://localhost:5173)'}`);
-  console.log(`Transport Mode:           ${isCustom ? 'Production Real SMTP' : 'Development Ethereal SMTP Test Fallback'}`);
+  console.log(`Transport Mode:           ${isCustom ? 'Production Real SMTP' : 'Development Ethereal / Console Fallback'}`);
   console.log('==================================================');
 };
 
 /**
- * Initialize or get active Nodemailer SMTP Transporter
+ * Create a Real SMTP Transporter instance
+ */
+const createRealSmtpTransporter = () => {
+  const host = cleanEnv(process.env.SMTP_HOST);
+  const rawPort = cleanEnv(process.env.SMTP_PORT);
+  const rawSecure = cleanEnv(process.env.SMTP_SECURE);
+  const user = cleanEnv(process.env.SMTP_USER);
+  const pass = cleanEnv(process.env.SMTP_PASSWORD);
+  const service = cleanEnv(process.env.SMTP_SERVICE);
+
+  const port = Number(rawPort) || 587;
+
+  let secure = false;
+  if (rawSecure.toLowerCase() === 'true') {
+    secure = true;
+  } else if (rawSecure.toLowerCase() === 'false') {
+    secure = false;
+  } else {
+    secure = port === 465;
+  }
+
+  if (port === 587 && secure) {
+    console.warn('[SMTP Warning] Port 587 configured with secure=true. Correcting to secure=false (STARTTLS) to prevent connection drop.');
+    secure = false;
+  }
+
+  const transportConfig = {
+    auth: { user, pass },
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT) || 15000,
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT) || 15000,
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT) || 30000,
+    tls: {
+      rejectUnauthorized: cleanEnv(process.env.SMTP_TLS_REJECT_UNAUTHORIZED) === 'true',
+      minVersion: 'TLSv1.2',
+    },
+  };
+
+  if (service) {
+    transportConfig.service = service;
+  } else {
+    transportConfig.host = host;
+    transportConfig.port = port;
+    transportConfig.secure = secure;
+  }
+
+  return nodemailer.createTransport(transportConfig);
+};
+
+/**
+ * Create Ethereal SMTP Transporter instance
+ */
+const createEtherealTransporter = (account) => {
+  return nodemailer.createTransport({
+    host: account.smtp.host,
+    port: account.smtp.port,
+    secure: account.smtp.secure,
+    auth: {
+      user: account.user,
+      pass: account.pass,
+    },
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT) || 10000,
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT) || 10000,
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT) || 15000,
+  });
+};
+
+/**
+ * Create Development Console / JSON Transporter
+ * Used when real SMTP and Ethereal are unavailable in development.
+ */
+const createConsoleTransporter = () => {
+  const jsonTransporter = nodemailer.createTransport({ jsonTransport: true });
+  // Ensure .verify() returns a resolving promise for compatibility
+  jsonTransporter.verify = async () => true;
+  return jsonTransporter;
+};
+
+/**
+ * Initialize or get Ethereal test account with timeout protection
+ */
+const initEtherealAccount = async () => {
+  if (etherealAccount) return etherealAccount;
+  if (etherealFailed) {
+    throw new Error('Ethereal test account previous attempt failed; using console transport.');
+  }
+
+  const timeoutMs = Number(process.env.ETHEREAL_TIMEOUT_MS) || 6000;
+  try {
+    const accountPromise = nodemailer.createTestAccount();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Ethereal creation timed out after ${timeoutMs}ms`)), timeoutMs)
+    );
+    etherealAccount = await Promise.race([accountPromise, timeoutPromise]);
+    return etherealAccount;
+  } catch (err) {
+    etherealFailed = true;
+    throw err;
+  }
+};
+
+/**
+ * Extract verification / action URL from email contents or options
+ */
+const extractActionUrl = (options = {}) => {
+  if (options.actionUrl) return options.actionUrl;
+  if (options.verificationUrl) return options.verificationUrl;
+  if (options.resetUrl) return options.resetUrl;
+
+  const urlRegex = /(https?:\/\/[^\s"'<>\)]+)/gi;
+  if (options.text) {
+    const matches = options.text.match(urlRegex);
+    if (matches && matches.length > 0) {
+      const actionMatch = matches.find((u) => /verify|reset|token/i.test(u));
+      return actionMatch || matches[0];
+    }
+  }
+  if (options.html) {
+    const hrefRegex = /href=["'](https?:\/\/[^"']+)["']/gi;
+    const matches = [];
+    let match;
+    while ((match = hrefRegex.exec(options.html)) !== null) {
+      matches.push(match[1]);
+    }
+    if (matches.length > 0) {
+      const actionMatch = matches.find((u) => /verify|reset|token/i.test(u));
+      return actionMatch || matches[0];
+    }
+  }
+  return null;
+};
+
+/**
+ * Formatted console output for local development fallback
+ */
+const logConsoleDelivery = ({ to, from, subject, actionUrl, actionType, text }) => {
+  console.log('\n' + '='.repeat(72));
+  console.log(' [DEVELOPMENT EMAIL FALLBACK - CONSOLE TRANSPORT]');
+  console.log('='.repeat(72));
+  console.log(` To:        ${to}`);
+  console.log(` From:      ${from}`);
+  console.log(` Subject:   ${subject}`);
+  if (actionType) {
+    console.log(` Purpose:   ${actionType}`);
+  }
+  console.log('-'.repeat(72));
+  if (actionUrl) {
+    console.log(' 🔗 VERIFICATION / ACTION LINK:');
+    console.log(`    ${actionUrl}`);
+    console.log('');
+    console.log('    👉 Click or copy the URL above to proceed in your browser.');
+    console.log('-'.repeat(72));
+  }
+  if (text) {
+    const previewLines = text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 6)
+      .join('\n    ');
+    console.log(' 📄 Message Summary:');
+    console.log(`    ${previewLines}`);
+    console.log('-'.repeat(72));
+  }
+  console.log('='.repeat(72) + '\n');
+};
+
+/**
+ * Deliver email directly via Development Console Transport
+ */
+const sendViaConsole = async ({ to, subject, html, text, from, actionUrl, actionType }) => {
+  logConsoleDelivery({
+    to,
+    from,
+    subject,
+    actionUrl,
+    actionType,
+    text,
+  });
+
+  const consoleTransporter = createConsoleTransporter();
+  let info = {};
+  try {
+    info = await consoleTransporter.sendMail({ from, to, subject, text, html });
+  } catch (_) {
+    info = {
+      messageId: `<chatflow-dev-${Date.now()}@local>`,
+      accepted: [to],
+      rejected: [],
+      response: '250 Dev Console OK',
+    };
+  }
+
+  return {
+    success: true,
+    messageId: info.messageId || `<chatflow-dev-${Date.now()}@local>`,
+    accepted: [to],
+    rejected: [],
+    response: info.response || '250 Dev Console OK',
+    previewUrl: null,
+    fallback: true,
+    transportMode: 'console',
+  };
+};
+
+/**
+ * Initialize or get active Nodemailer Transporter
  */
 const getTransporter = async () => {
   if (transporter) return transporter;
@@ -111,85 +329,44 @@ const getTransporter = async () => {
   }
 
   isInitializing = (async () => {
-    const host = cleanEnv(process.env.SMTP_HOST);
-    const rawPort = cleanEnv(process.env.SMTP_PORT);
-    const rawSecure = cleanEnv(process.env.SMTP_SECURE);
-    const user = cleanEnv(process.env.SMTP_USER);
-    const pass = cleanEnv(process.env.SMTP_PASSWORD);
-    const service = cleanEnv(process.env.SMTP_SERVICE);
+    try {
+      const isProd = process.env.NODE_ENV === 'production';
+      const isCustom = hasRealSmtpConfig();
 
-    const port = Number(rawPort) || 587;
+      logSmtpDiagnostics();
 
-    // Secure calculation:
-    // Port 465 requires secure = true (SSL direct).
-    // Port 587 and 2525 require secure = false (STARTTLS).
-    let secure = false;
-    if (rawSecure.toLowerCase() === 'true') {
-      secure = true;
-    } else if (rawSecure.toLowerCase() === 'false') {
-      secure = false;
-    } else {
-      secure = port === 465;
-    }
-
-    // Safety check: Port 587 does not support direct TLS from connection
-    if (port === 587 && secure) {
-      console.warn('[SMTP Warning] Port 587 configured with secure=true. Correcting to secure=false (STARTTLS) to prevent connection drop.');
-      secure = false;
-    }
-
-    logSmtpDiagnostics();
-
-    if ((host || service) && user && pass) {
-      // Custom real SMTP configuration
-      const transportConfig = {
-        auth: { user, pass },
-        // Cloud-safe timeouts (prevent serverless function hangs)
-        connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT) || 15000,
-        greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT) || 15000,
-        socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT) || 30000,
-        tls: {
-          rejectUnauthorized: cleanEnv(process.env.SMTP_TLS_REJECT_UNAUTHORIZED) === 'true',
-          minVersion: 'TLSv1.2',
-        },
-      };
-
-      if (service) {
-        transportConfig.service = service;
-      } else {
-        transportConfig.host = host;
-        transportConfig.port = port;
-        transportConfig.secure = secure;
+      // 1. REAL SMTP (Highest priority when credentials are provided)
+      if (isCustom) {
+        transporter = createRealSmtpTransporter();
+        currentTransportMode = 'real_smtp';
+        console.log(`[SMTP] Initialized production SMTP transport (${process.env.SMTP_SERVICE || `${cleanEnv(process.env.SMTP_HOST)}:${cleanEnv(process.env.SMTP_PORT) || 587}`})`);
+        return transporter;
       }
 
-      transporter = nodemailer.createTransport(transportConfig);
-      console.log(`[SMTP] Initialized production SMTP transport (${service || `${host}:${port}`}, secure: ${secure})`);
-    } else {
-      // In development when explicit SMTP credentials are not yet set,
-      // create a real test SMTP account via Ethereal Email for authentic SMTP handshakes & inbox verification.
+      // 2. PRODUCTION SAFETY: In production, missing credentials must fail strictly
+      if (isProd) {
+        throw new Error('SMTP credentials (SMTP_HOST, SMTP_USER, SMTP_PASSWORD) are not configured in production environment.');
+      }
+
+      // 3. DEVELOPMENT: Attempt Ethereal Test Account
       console.log('[SMTP] No explicit SMTP_HOST/USER in environment. Initializing real Ethereal SMTP test transport...');
       try {
-        etherealAccount = await nodemailer.createTestAccount();
-        transporter = nodemailer.createTransport({
-          host: etherealAccount.smtp.host,
-          port: etherealAccount.smtp.port,
-          secure: etherealAccount.smtp.secure,
-          auth: {
-            user: etherealAccount.user,
-            pass: etherealAccount.pass,
-          },
-          connectionTimeout: 15000,
-          greetingTimeout: 15000,
-          socketTimeout: 30000,
-        });
-        console.log(`[SMTP] Real Ethereal SMTP transport active: host=${etherealAccount.smtp.host}, user=${etherealAccount.user}`);
+        const account = await initEtherealAccount();
+        transporter = createEtherealTransporter(account);
+        currentTransportMode = 'ethereal';
+        console.log(`[SMTP] Real Ethereal SMTP transport active: host=${account.smtp.host}, user=${account.user}`);
+        return transporter;
       } catch (etherealErr) {
-        console.error('[SMTP] Failed to initialize Ethereal SMTP transport:', etherealErr.message);
-        throw etherealErr;
+        // 4. DEVELOPMENT FALLBACK: Ethereal failed -> use Console Transport
+        console.warn(`[SMTP Warning] Ethereal test account unavailable (${etherealErr.message}).`);
+        console.log('[SMTP] Falling back to Development Console Transport (verification links printed to terminal).');
+        transporter = createConsoleTransporter();
+        currentTransportMode = 'console';
+        return transporter;
       }
+    } finally {
+      isInitializing = null;
     }
-
-    return transporter;
   })();
 
   return isInitializing;
@@ -201,9 +378,23 @@ const getTransporter = async () => {
 const verifySmtpConnection = async () => {
   try {
     const t = await getTransporter();
+
+    if (currentTransportMode === 'console') {
+      console.log('[SMTP] Development Console Fallback Transport is active.');
+      return {
+        success: true,
+        message: 'Console fallback transport active (development mode)',
+        mode: 'console',
+      };
+    }
+
     await t.verify();
     console.log('[SMTP] ✓ Connection and authentication verified successfully.');
-    return { success: true, message: 'SMTP connection verified successfully' };
+    return {
+      success: true,
+      message: 'SMTP connection verified successfully',
+      mode: currentTransportMode,
+    };
   } catch (err) {
     console.error('[SMTP] ✗ Connection verification failed:', {
       message: err.message,
@@ -212,6 +403,20 @@ const verifySmtpConnection = async () => {
       response: err.response,
       responseCode: err.responseCode,
     });
+
+    const isProd = process.env.NODE_ENV === 'production';
+    if (!isProd) {
+      console.warn('[SMTP] In development mode, email operations will automatically fall back to console logging if SMTP fails.');
+      transporter = createConsoleTransporter();
+      currentTransportMode = 'console';
+      return {
+        success: true,
+        message: `SMTP verification failed (${err.message}). Switched to development console transport.`,
+        mode: 'console',
+        fallback: true,
+      };
+    }
+
     return {
       success: false,
       message: err.message,
@@ -224,25 +429,63 @@ const verifySmtpConnection = async () => {
 };
 
 /**
- * Core send email function with safe delivery diagnostics
+ * Core send email function with resilient delivery & development console fallback
  */
-const sendMail = async ({ to, subject, html, text }) => {
+const sendMail = async ({
+  to,
+  subject,
+  html,
+  text,
+  actionUrl,
+  verificationUrl,
+  resetUrl,
+  actionType,
+}) => {
   if (!to) {
     throw new Error('Recipient email address ("to") is required.');
   }
 
-  const t = await getTransporter();
+  const isProd = process.env.NODE_ENV === 'production';
+  const resolvedActionUrl = extractActionUrl({ actionUrl, verificationUrl, resetUrl, text, html });
+
+  let t;
+  try {
+    t = await getTransporter();
+  } catch (err) {
+    if (isProd) {
+      throw err;
+    }
+    console.warn(`[SMTP Warning] getTransporter error in development: ${err.message}. Using Console Transport.`);
+    transporter = createConsoleTransporter();
+    currentTransportMode = 'console';
+    t = transporter;
+  }
 
   const rawFromEmail = cleanEnv(process.env.FROM_EMAIL);
   const rawUser = cleanEnv(process.env.SMTP_USER);
   const rawFromName = cleanEnv(process.env.FROM_NAME);
 
-  // Critical: If FROM_EMAIL is not specified, default to SMTP_USER
-  // to avoid SMTP server rejection (e.g. Gmail 550 5.7.1)
-  const fromEmail = rawFromEmail || rawUser || (etherealAccount ? etherealAccount.user : 'no-reply@chatflow.com');
+  const fromEmail =
+    rawFromEmail ||
+    rawUser ||
+    (etherealAccount ? etherealAccount.user : 'no-reply@chatflow.local');
   const fromName = rawFromName || 'ChatFlow';
   const from = `"${fromName}" <${fromEmail}>`;
 
+  // 1. If currently in Console Mode, send via Console directly
+  if (currentTransportMode === 'console') {
+    return await sendViaConsole({
+      to,
+      subject,
+      html,
+      text,
+      from,
+      actionUrl: resolvedActionUrl,
+      actionType,
+    });
+  }
+
+  // 2. Try sending with current active transporter (Real SMTP or Ethereal)
   try {
     const info = await t.sendMail({
       from,
@@ -254,9 +497,8 @@ const sendMail = async ({ to, subject, html, text }) => {
 
     const previewUrl = nodemailer.getTestMessageUrl(info) || null;
 
-    // Log safe diagnostics (strictly omit any passwords or tokens)
     console.log(
-      `[SMTP] Message accepted by SMTP: messageId=${info.messageId}, accepted=${JSON.stringify(info.accepted)}, response="${info.response || 'OK'}"`
+      `[SMTP] Message accepted by ${currentTransportMode === 'real_smtp' ? 'real SMTP' : 'Ethereal'}: messageId=${info.messageId}, accepted=${JSON.stringify(info.accepted)}`
     );
     if (previewUrl) {
       console.log(`[SMTP] Real test mailbox preview URL: ${previewUrl}`);
@@ -269,17 +511,78 @@ const sendMail = async ({ to, subject, html, text }) => {
       rejected: info.rejected,
       response: info.response,
       previewUrl,
+      transportMode: currentTransportMode,
     };
-  } catch (error) {
-    console.error('[SMTP] SMTP send failed:', {
-      message: error.message,
-      code: error.code,
-      command: error.command,
-      response: error.response,
-      responseCode: error.responseCode,
-      recipient: maskEmail(to),
+  } catch (sendError) {
+    // In production: Fail strictly, do NOT bypass email verification
+    if (isProd) {
+      console.error('[SMTP] Production SMTP delivery failed:', {
+        message: sendError.message,
+        code: sendError.code,
+        command: sendError.command,
+        response: sendError.response,
+        responseCode: sendError.responseCode,
+        recipient: maskEmail(to),
+      });
+      throw sendError;
+    }
+
+    // In development: Handle fallback gracefully
+    console.warn(`[SMTP Warning] ${currentTransportMode === 'real_smtp' ? 'Real SMTP' : 'Ethereal'} send failed: ${sendError.message}`);
+
+    // If Real SMTP failed in development, try Ethereal first
+    if (currentTransportMode === 'real_smtp' && !etherealFailed) {
+      console.log('[SMTP] Attempting Ethereal test fallback in development...');
+      try {
+        const account = await initEtherealAccount();
+        const etherealTransporter = createEtherealTransporter(account);
+        const etherealFrom = `"${fromName}" <${account.user}>`;
+        const info = await etherealTransporter.sendMail({
+          from: etherealFrom,
+          to,
+          subject,
+          text,
+          html,
+        });
+
+        const previewUrl = nodemailer.getTestMessageUrl(info) || null;
+        console.log(`[SMTP] Fallback to Ethereal succeeded: messageId=${info.messageId}`);
+        if (previewUrl) {
+          console.log(`[SMTP] Real test mailbox preview URL: ${previewUrl}`);
+        }
+
+        transporter = etherealTransporter;
+        currentTransportMode = 'ethereal';
+
+        return {
+          success: true,
+          messageId: info.messageId,
+          accepted: info.accepted,
+          rejected: info.rejected,
+          response: info.response,
+          previewUrl,
+          fallback: true,
+          transportMode: 'ethereal',
+        };
+      } catch (etherealErr) {
+        console.warn(`[SMTP Warning] Ethereal fallback failed (${etherealErr.message}). Switching to Console Transport.`);
+      }
+    }
+
+    // If both real SMTP and Ethereal failed (or Ethereal was unavailable), fall back to Console Transport
+    console.log('[SMTP] Using Development Console Transport fallback.');
+    transporter = createConsoleTransporter();
+    currentTransportMode = 'console';
+
+    return await sendViaConsole({
+      to,
+      subject,
+      html,
+      text,
+      from,
+      actionUrl: resolvedActionUrl,
+      actionType,
     });
-    throw error;
   }
 };
 
@@ -300,6 +603,8 @@ const sendVerificationEmail = async ({ to, name, token, req }) => {
     subject: template.subject,
     html: template.html,
     text: template.text,
+    actionUrl: verificationUrl,
+    actionType: 'Account Verification',
   });
 };
 
@@ -320,6 +625,8 @@ const sendPasswordResetEmail = async ({ to, name, token, req }) => {
     subject: template.subject,
     html: template.html,
     text: template.text,
+    actionUrl: resetUrl,
+    actionType: 'Password Reset',
   });
 };
 
@@ -337,6 +644,7 @@ const sendPasswordChangedEmail = async ({ to, name, timestamp }) => {
     subject: template.subject,
     html: template.html,
     text: template.text,
+    actionType: 'Password Changed Notification',
   });
 };
 
@@ -353,6 +661,7 @@ const sendAccountDeletedEmail = async ({ to, name }) => {
     subject: template.subject,
     html: template.html,
     text: template.text,
+    actionType: 'Account Deleted Notification',
   });
 };
 
@@ -363,15 +672,25 @@ const getSmtpStatus = () => {
   const host = cleanEnv(process.env.SMTP_HOST) || (etherealAccount ? etherealAccount.smtp.host : 'unconfigured');
   const port = Number(cleanEnv(process.env.SMTP_PORT)) || (etherealAccount ? etherealAccount.smtp.port : 587);
   const secure = cleanEnv(process.env.SMTP_SECURE) === 'true' || (etherealAccount ? etherealAccount.smtp.secure : port === 465);
-  const isCustom = Boolean(cleanEnv(process.env.SMTP_HOST) && cleanEnv(process.env.SMTP_USER));
+  const isCustom = hasRealSmtpConfig();
+
+  let provider = 'unconfigured';
+  if (isCustom) {
+    provider = 'custom_smtp';
+  } else if (currentTransportMode === 'ethereal' || etherealAccount) {
+    provider = 'ethereal_test_smtp';
+  } else if (currentTransportMode === 'console') {
+    provider = 'console_dev_fallback';
+  }
 
   return {
-    configured: Boolean(transporter || isCustom),
-    provider: isCustom ? 'custom_smtp' : etherealAccount ? 'ethereal_test_smtp' : 'unconfigured',
-    host: host ? `${host.substring(0, 4)}***.${host.split('.').slice(-2).join('.')}` : 'none',
+    configured: Boolean(transporter || isCustom || currentTransportMode === 'console'),
+    provider,
+    transportMode: currentTransportMode || (isCustom ? 'real_smtp' : 'uninitialized'),
+    host: host ? (host.includes('.') ? `${host.substring(0, 4)}***.${host.split('.').slice(-2).join('.')}` : host) : currentTransportMode === 'console' ? 'console-local' : 'none',
     port,
     secure,
-    fromEmail: cleanEnv(process.env.FROM_EMAIL) || cleanEnv(process.env.SMTP_USER) || (etherealAccount ? etherealAccount.user : 'no-reply@chatflow.com'),
+    fromEmail: cleanEnv(process.env.FROM_EMAIL) || cleanEnv(process.env.SMTP_USER) || (etherealAccount ? etherealAccount.user : 'no-reply@chatflow.local'),
     fromName: cleanEnv(process.env.FROM_NAME) || 'ChatFlow',
     clientUrl: resolveClientUrl(),
   };
