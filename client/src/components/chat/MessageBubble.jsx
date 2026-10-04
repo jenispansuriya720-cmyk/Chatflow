@@ -20,6 +20,7 @@ import {
   Plus,
   Loader2,
   RotateCcw,
+  Heart,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
@@ -28,12 +29,40 @@ import DeleteConfirmModal from '../modals/DeleteConfirmModal';
 import ReportModal from '../modals/ReportModal';
 
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-const MORE_REACTIONS = [
-  '🔥', '🎉', '💯', '👏', '🤝', '🚀',
-  '🥰', '😍', '😎', '🥳', '🤔', '👀',
-  '🥺', '😡', '✨', '⚡', '💖', '🙌',
-  '💔', '🤯', '😴', '🫡', '🤤', '🫠',
-];
+
+const EMOJI_CATEGORIES = {
+  Popular: [
+    '👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉', '💯', '👏',
+    '🤝', '🚀', '🥰', '😍', '😎', '🥳', '🤔', '👀', '🥺', '😡',
+    '✨', '⚡', '💖', '🙌', '💔', '🤯', '😴', '🫡', '🤤', '🫠'
+  ],
+  Smileys: [
+    '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '🙂', '🙃', '😉',
+    '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😋', '😛', '😜',
+    '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐',
+    '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪',
+    '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶',
+    '🥴', '😵', '🤯', '🤠', '🥳', '🥸', '😎', '🤓', '🧐', '😕',
+    '😟', '🙁', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨',
+    '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩'
+  ],
+  Gestures: [
+    '👍', '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌', '👐', '🤲',
+    '🤝', '🙏', '✍️', '💅', '🤳', '💪', '🦵', '🦶', '👂', '👃',
+    '🧠', '👀', '👁️', '👅', '👄', '👋', '🤚', '🖐️', '✋', '🖖',
+    '👌', '🤌', '🤏', '✌️', '🤞', '🫰', '🤟', '🤘', '🤙', '👈',
+    '👉', '👆', '🖕', '👇', '☝️'
+  ],
+  Hearts: [
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
+    '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '💌'
+  ],
+  Vibes: [
+    '🔥', '✨', '⚡', '🌟', '💫', '💥', '🎉', '🎊', '🎈', '🎁',
+    '🏆', '🥇', '🥈', '🥉', '⚽', '🏀', '🎯', '🚀', '🐱', '🐶',
+    '🍕', '🍔', '🍻', '☕', '🍷', '🥂', '🍾', '🍩', '🥑', '🍿'
+  ]
+};
 
 const MessageBubble = ({
   message,
@@ -58,12 +87,19 @@ const MessageBubble = ({
   const [reactionBarOpen, setReactionBarOpen] = useState(false);
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const [showMoreEmojis, setShowMoreEmojis] = useState(false);
+  const [activeCategory, setActiveCategory] = useState('Popular');
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.text || '');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteOption, setDeleteOption] = useState('for_everyone');
   const [reportModalOpen, setReportModalOpen] = useState(false);
+
+  // Double-tap heart animation & timing refs
+  const [showChatHeart, setShowChatHeart] = useState(false);
+  const [chatHeartKey, setChatHeartKey] = useState(0);
+  const chatHeartTimerRef = useRef(null);
+  const lastTapRef = useRef(0);
 
   const msgWrapperRef = useRef(null);
   const desktopReactionPickerRef = useRef(null);
@@ -199,7 +235,32 @@ const MessageBubble = ({
     setMobileSheetOpen(false);
   };
 
-  // Touch handlers for mobile long press (Section 4)
+  const triggerChatHeartAnimation = () => {
+    setChatHeartKey((k) => k + 1);
+    setShowChatHeart(true);
+    if (chatHeartTimerRef.current) clearTimeout(chatHeartTimerRef.current);
+    chatHeartTimerRef.current = setTimeout(() => {
+      setShowChatHeart(false);
+    }, 750);
+  };
+
+  const handleDoubleTapReaction = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    if (message.isDeleted || isEditing) return;
+
+    // Trigger visual pop animation
+    triggerChatHeartAnimation();
+
+    // Default reaction is ❤️, ensure mode (keep liked if already ❤️)
+    reactToMessage(message._id, '❤️', 'ensure');
+  };
+
+  const handleDoubleClickMessage = (e) => {
+    if (e.target.closest('button, a, video, audio, input, textarea')) return;
+    handleDoubleTapReaction(e);
+  };
+
+  // Touch handlers for mobile long press & double-tap (Requirements 6, 7, 13, 20)
   const handleTouchStart = (e) => {
     if (message.isDeleted || isEditing) return;
     const touch = e.touches[0];
@@ -227,11 +288,30 @@ const MessageBubble = ({
     }
   };
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = (e) => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
     }
+
+    if (isTouchMoved.current) return;
+
+    // Mobile double-tap detection (250–320ms window)
+    const now = Date.now();
+    const timeDelta = now - lastTapRef.current;
+    if (timeDelta > 50 && timeDelta < 320) {
+      lastTapRef.current = 0;
+      handleDoubleTapReaction(e);
+    } else {
+      lastTapRef.current = now;
+    }
   };
+
+  useEffect(() => {
+    return () => {
+      if (chatHeartTimerRef.current) clearTimeout(chatHeartTimerRef.current);
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    };
+  }, []);
 
   // Right-click desktop context menu handler
   const handleContextMenu = (e) => {
@@ -274,9 +354,19 @@ const MessageBubble = ({
     }
   };
 
-  // Group reactions by emoji
-  const groupedReactions = (message.reactions || []).reduce((acc, curr) => {
-    acc[curr.emoji] = (acc[curr.emoji] || 0) + 1;
+  // Group reactions by emoji and capture reactor names (Requirements 23, 24)
+  const reactionDetails = (message.reactions || []).reduce((acc, curr) => {
+    if (!acc[curr.emoji]) {
+      acc[curr.emoji] = { count: 0, names: [], hasOwn: false };
+    }
+    acc[curr.emoji].count += 1;
+    const isMe =
+      (curr.user?._id || curr.user || curr.userId)?.toString() === user?._id?.toString();
+    if (isMe) acc[curr.emoji].hasOwn = true;
+    const name = isMe
+      ? 'You'
+      : curr.user?.fullName || (curr.user?.username ? `@${curr.user.username}` : 'User');
+    acc[curr.emoji].names.push(name);
     return acc;
   }, {});
 
@@ -355,7 +445,7 @@ const MessageBubble = ({
             className="relative inline-flex flex-col max-w-full w-fit group/msg"
             style={{ width: 'fit-content' }}
           >
-            {/* Message Bubble Card */}
+            {/* Message Bubble Card with Double-Tap to React (Requirements 6, 7, 26) */}
             <div
               onClick={(e) => {
                 if (e.target.closest('button, a, video, audio, input, textarea, img')) return;
@@ -364,6 +454,7 @@ const MessageBubble = ({
                   setReactionBarOpen((prev) => !prev);
                 }
               }}
+              onDoubleClick={handleDoubleClickMessage}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
               onTouchMove={handleTouchMove}
@@ -391,6 +482,18 @@ const MessageBubble = ({
                   }
             }
           >
+            {/* Double-Tap Heart Burst Pop Animation (Requirements 6 & 7) */}
+            {showChatHeart && (
+              <div
+                key={chatHeartKey}
+                className="absolute inset-0 flex items-center justify-center pointer-events-none z-30"
+              >
+                <div className="w-13 h-13 rounded-full bg-black/45 backdrop-blur-xs flex items-center justify-center shadow-lg animate-chat-heart">
+                  <Heart className="w-8 h-8 text-rose-500 fill-rose-500 drop-shadow-md" />
+                </div>
+              </div>
+            )}
+
             {/* Deleted state */}
             {message.isDeleted ? (
               <div className="flex items-center space-x-2 py-0.5 select-none">
@@ -983,7 +1086,7 @@ const MessageBubble = ({
                       <Plus className="w-4 h-4" />
                     </button>
 
-                    {/* Full Emoji Picker Popover */}
+                    {/* Full Emoji Picker Popover (Requirement 10) */}
                     {showMoreEmojis && (
                       <div
                         className={`absolute ${
@@ -992,42 +1095,66 @@ const MessageBubble = ({
                             : 'bottom-full mb-2'
                         } ${
                           isOwn ? 'right-0' : 'left-0'
-                        } w-64 p-2 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl grid grid-cols-6 gap-1 z-40 max-h-56 overflow-y-auto animate-slide-up`}
+                        } w-72 p-2 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl z-40 animate-slide-up flex flex-col`}
                         style={{
-                          width: '260px',
+                          width: '280px',
                           maxWidth: 'calc(100vw - 32px)',
                         }}
                         role="dialog"
                         aria-label="Full emoji reactions picker"
                       >
-                        {MORE_REACTIONS.map((emoji) => {
-                          const active = hasReacted(emoji);
-                          return (
+                        {/* Category Tabs */}
+                        <div className="flex items-center space-x-1 pb-1.5 mb-1.5 border-b border-slate-100 dark:border-dark-border overflow-x-auto text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                          {Object.keys(EMOJI_CATEGORIES).map((cat) => (
                             <button
-                              key={emoji}
+                              key={cat}
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                reactToMessage(message._id, emoji);
-                                setShowMoreEmojis(false);
-                                setReactionBarOpen(false);
+                                setActiveCategory(cat);
                               }}
-                              aria-label={
-                                active
-                                  ? `Remove ${emoji} reaction`
-                                  : `React with ${emoji}`
-                              }
-                              className={`w-9 h-9 flex items-center justify-center text-lg rounded-xl transition-transform hover:scale-125 cursor-pointer flex-shrink-0 ${
-                                active
-                                  ? 'bg-brand-500/20 ring-1 ring-brand-500'
+                              className={`px-2 py-0.5 rounded-lg transition-colors cursor-pointer flex-shrink-0 ${
+                                activeCategory === cat
+                                  ? 'bg-brand-500/15 text-brand-600 dark:text-brand-400 font-bold'
                                   : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
                               }`}
-                              style={{ width: '36px', height: '36px' }}
                             >
-                              {emoji}
+                              {cat}
                             </button>
-                          );
-                        })}
+                          ))}
+                        </div>
+
+                        {/* Emoji Grid */}
+                        <div className="grid grid-cols-6 gap-1 max-h-52 overflow-y-auto pr-0.5">
+                          {(EMOJI_CATEGORIES[activeCategory] || []).map((emoji) => {
+                            const active = hasReacted(emoji);
+                            return (
+                              <button
+                                key={emoji}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  reactToMessage(message._id, emoji);
+                                  setShowMoreEmojis(false);
+                                  setReactionBarOpen(false);
+                                }}
+                                aria-label={
+                                  active
+                                    ? `Remove ${emoji} reaction`
+                                    : `React with ${emoji}`
+                                }
+                                className={`w-9 h-9 flex items-center justify-center text-lg rounded-xl transition-transform hover:scale-125 cursor-pointer flex-shrink-0 ${
+                                  active
+                                    ? 'bg-brand-500/20 ring-1 ring-brand-500 scale-110'
+                                    : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
+                                }`}
+                                style={{ width: '36px', height: '36px' }}
+                              >
+                                {emoji}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1201,8 +1328,8 @@ const MessageBubble = ({
           )}
         </div>
 
-        {/* Reactions Pill Display (Section 10) */}
-        {Object.keys(groupedReactions).length > 0 && !message.isDeleted && (
+        {/* Reactions Pill Display (Requirements 23 & 24) */}
+        {Object.keys(reactionDetails).length > 0 && !message.isDeleted && (
           <div
             className={`flex flex-wrap gap-1 mt-1 px-1 ${
               isOwn ? 'justify-end' : 'justify-start'
@@ -1210,8 +1337,12 @@ const MessageBubble = ({
             role="group"
             aria-label="Message reactions"
           >
-            {Object.entries(groupedReactions).map(([emoji, count]) => {
-              const active = hasReacted(emoji);
+            {Object.entries(reactionDetails).map(([emoji, info]) => {
+              const active = info.hasOwn;
+              const titleText = `${emoji} ${info.count} — Reacted by: ${info.names.join(', ')}${
+                active ? ' (click to remove)' : ' (click to react)'
+              }`;
+
               return (
                 <button
                   key={emoji}
@@ -1220,9 +1351,8 @@ const MessageBubble = ({
                     e.stopPropagation();
                     reactToMessage(message._id, emoji);
                   }}
-                  aria-label={
-                    active ? `Remove ${emoji} reaction` : `React with ${emoji}`
-                  }
+                  aria-label={titleText}
+                  title={titleText}
                   className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-medium border shadow-xs transition-all cursor-pointer ${
                     active
                       ? 'bg-brand-500/15 border-brand-500/40 text-brand-600 dark:text-brand-400 scale-105'
@@ -1236,14 +1366,9 @@ const MessageBubble = ({
                         }
                       : {}
                   }
-                  title={
-                    active
-                      ? 'Tap to remove reaction'
-                      : `${count} reaction${count > 1 ? 's' : ''}`
-                  }
                 >
                   <span>{emoji}</span>
-                  <span className="text-[11px] font-bold">{count}</span>
+                  <span className="text-[11px] font-bold">{info.count}</span>
                 </button>
               );
             })}
@@ -1331,35 +1456,56 @@ const MessageBubble = ({
               </button>
             </div>
 
-            {/* Expanded Emoji Grid if ＋ tapped */}
+            {/* Expanded Emoji Grid if ＋ tapped (Requirement 10 & 13) */}
             {showMoreEmojis && (
-              <div className="grid grid-cols-6 gap-2 p-2 mb-3 bg-slate-50 dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl max-h-48 overflow-y-auto animate-scale-in">
-                {MORE_REACTIONS.map((emoji) => {
-                  const active = hasReacted(emoji);
-                  return (
+              <div className="mb-3 bg-slate-50 dark:bg-dark-hover/40 border border-slate-200 dark:border-dark-border rounded-2xl p-2 animate-scale-in">
+                {/* Category tabs */}
+                <div className="flex items-center space-x-1.5 pb-2 mb-2 border-b border-slate-200 dark:border-dark-border overflow-x-auto text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {Object.keys(EMOJI_CATEGORIES).map((cat) => (
                     <button
-                      key={emoji}
+                      key={cat}
                       type="button"
-                      onClick={() => {
-                        reactToMessage(message._id, emoji);
-                        setMobileSheetOpen(false);
-                        setShowMoreEmojis(false);
-                      }}
-                      aria-label={
-                        active
-                          ? `Remove ${emoji} reaction`
-                          : `React with ${emoji}`
-                      }
-                      className={`min-w-[40px] min-h-[40px] flex items-center justify-center text-xl rounded-xl transition-all active:scale-125 touch-manipulation cursor-pointer ${
-                        active
-                          ? 'bg-brand-500/20 ring-2 ring-brand-500'
-                          : 'hover:bg-slate-200 dark:hover:bg-dark-hover'
+                      onClick={() => setActiveCategory(cat)}
+                      className={`px-2.5 py-1 rounded-xl transition-colors cursor-pointer flex-shrink-0 touch-manipulation ${
+                        activeCategory === cat
+                          ? 'bg-brand-500 text-white font-bold'
+                          : 'bg-white dark:bg-dark-card hover:bg-slate-100 text-slate-700 dark:text-slate-200'
                       }`}
                     >
-                      {emoji}
+                      {cat}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+
+                {/* Emoji Grid with >=44px touch targets */}
+                <div className="grid grid-cols-6 gap-1.5 max-h-52 overflow-y-auto p-1">
+                  {(EMOJI_CATEGORIES[activeCategory] || []).map((emoji) => {
+                    const active = hasReacted(emoji);
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={() => {
+                          reactToMessage(message._id, emoji);
+                          setMobileSheetOpen(false);
+                          setShowMoreEmojis(false);
+                        }}
+                        aria-label={
+                          active
+                            ? `Remove ${emoji} reaction`
+                            : `React with ${emoji}`
+                        }
+                        className={`w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-2xl rounded-xl transition-all active:scale-125 touch-manipulation cursor-pointer ${
+                          active
+                            ? 'bg-brand-500/20 ring-2 ring-brand-500 scale-105'
+                            : 'hover:bg-slate-200 dark:hover:bg-dark-border/60'
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

@@ -75,6 +75,98 @@ const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
     return () => socket.off('reel:deleted', handleReelDeleted);
   }, [socket, reel._id]);
 
+  // Real-time reel like listener (Requirement 17)
+  useEffect(() => {
+    if (!socket) return;
+    const handleLikeUpdated = ({ reelId, likesCount: newCount, userId: likerId, isLiked: userIsLiked }) => {
+      if (reelId === reel._id) {
+        setLikesCount(newCount);
+        if (likerId === user?._id?.toString()) {
+          setIsLiked(userIsLiked);
+        }
+      }
+    };
+    socket.on('reel:likeUpdated', handleLikeUpdated);
+    return () => socket.off('reel:likeUpdated', handleLikeUpdated);
+  }, [socket, reel._id, user?._id]);
+
+  // Double-tap heart animation & timing refs (Requirement 4 & 5)
+  const [showHeartAnimation, setShowHeartAnimation] = useState(false);
+  const [heartAnimKey, setHeartAnimKey] = useState(0);
+  const singleTapTimerRef = useRef(null);
+  const lastTapTimeRef = useRef(0);
+  const heartTimerRef = useRef(null);
+
+  const triggerLikeAnimation = () => {
+    setHeartAnimKey((k) => k + 1);
+    setShowHeartAnimation(true);
+    if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
+    heartTimerRef.current = setTimeout(() => {
+      setShowHeartAnimation(false);
+    }, 850);
+  };
+
+  const handleDoubleTapLike = async () => {
+    // Cancel single tap action so video does NOT toggle play/pause!
+    if (singleTapTimerRef.current) {
+      clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = null;
+    }
+
+    triggerLikeAnimation();
+
+    if (!isLiked) {
+      const prevCount = likesCount;
+      setIsLiked(true);
+      setLikesCount((prev) => prev + 1);
+
+      try {
+        const res = await api.post(`/reels/${reel._id}/like`, { action: 'like' });
+        if (res.data.success) {
+          setIsLiked(res.data.isLiked);
+          setLikesCount(res.data.likesCount);
+        }
+      } catch (err) {
+        setIsLiked(false);
+        setLikesCount(prevCount);
+      }
+    } else {
+      // If already liked, keep liked per Requirement 2 & 4
+      try {
+        await api.post(`/reels/${reel._id}/like`, { action: 'like' });
+      } catch (err) {}
+    }
+  };
+
+  const handleVideoClick = (e) => {
+    // Ignore clicks on options or buttons
+    if (e.target.closest('button, a, .control-btn')) return;
+
+    const now = Date.now();
+    const timeSinceLastTap = now - lastTapTimeRef.current;
+
+    if (timeSinceLastTap > 40 && timeSinceLastTap < 300) {
+      // Second tap arrived within 300ms -> Double-tap!
+      lastTapTimeRef.current = 0;
+      handleDoubleTapLike();
+    } else {
+      // First tap: record timestamp and schedule single tap action
+      lastTapTimeRef.current = now;
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      singleTapTimerRef.current = setTimeout(() => {
+        togglePlay();
+        singleTapTimerRef.current = null;
+      }, 280);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+      if (heartTimerRef.current) clearTimeout(heartTimerRef.current);
+    };
+  }, []);
+
   // Auto-pause when reel leaves viewport (IntersectionObserver)
   useEffect(() => {
     const videoEl = videoRef.current;
@@ -210,14 +302,28 @@ const ReelPlayer = ({ reel, onOpenComments, onOpenShare }) => {
         loop
         playsInline
         muted={isMuted}
-        onClick={togglePlay}
+        onClick={handleVideoClick}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          handleDoubleTapLike();
+        }}
         className="w-full h-full object-cover cursor-pointer"
       />
+
+      {/* Centered Heart Burst Animation on Double Tap (Requirement 4) */}
+      {showHeartAnimation && (
+        <div
+          key={heartAnimKey}
+          className="absolute inset-0 flex items-center justify-center pointer-events-none z-30"
+        >
+          <Heart className="w-28 h-28 sm:w-32 sm:h-32 text-rose-500 fill-rose-500 animate-heart-burst drop-shadow-[0_10px_30px_rgba(244,63,94,0.7)]" />
+        </div>
+      )}
 
       {/* Play/Pause Overlay indicator when paused */}
       {!isPlaying && (
         <div
-          onClick={togglePlay}
+          onClick={handleVideoClick}
           className="absolute inset-0 flex items-center justify-center bg-black/25 cursor-pointer pointer-events-none"
         >
           <div className="w-16 h-16 rounded-full bg-black/50 text-white flex items-center justify-center backdrop-blur-xs">

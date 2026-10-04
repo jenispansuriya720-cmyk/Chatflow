@@ -683,7 +683,7 @@ const deleteMessage = async (req, res, next) => {
 const reactToMessage = async (req, res, next) => {
   try {
     const userId = req.user._id;
-    const { emoji } = req.body;
+    const { emoji, action } = req.body;
 
     if (!emoji || typeof emoji !== 'string' || !emoji.trim()) {
       return res.status(400).json({ success: false, message: 'Emoji reaction is required.' });
@@ -716,8 +716,12 @@ const reactToMessage = async (req, res, next) => {
     );
 
     if (existingReactionIndex > -1) {
-      // User tapped their current reaction again -> Remove reaction (Section 8)
-      message.reactions.splice(existingReactionIndex, 1);
+      if (action === 'ensure' || action === 'like') {
+        // Double-tap idempotent reaction: already reacted with this emoji, keep it!
+      } else {
+        // User tapped their current reaction again -> Remove reaction (Section 8)
+        message.reactions.splice(existingReactionIndex, 1);
+      }
     } else {
       // User tapped a new/different emoji -> Replace previous reaction by this user (Section 7)
       message.reactions = message.reactions.filter(

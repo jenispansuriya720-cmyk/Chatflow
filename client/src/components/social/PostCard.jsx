@@ -63,6 +63,96 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
     return () => socket.off('post:deleted', handlePostDeleted);
   }, [socket, post._id]);
 
+  // Real-time post like listener (Requirement 17)
+  useEffect(() => {
+    if (!socket) return;
+    const handleLikeUpdated = ({ postId, likesCount: newCount, userId: likerId, isLiked: userIsLiked }) => {
+      if (postId === post._id) {
+        setLikesCount(newCount);
+        if (likerId === user?._id?.toString()) {
+          setIsLiked(userIsLiked);
+        }
+      }
+    };
+    socket.on('post:likeUpdated', handleLikeUpdated);
+    return () => socket.off('post:likeUpdated', handleLikeUpdated);
+  }, [socket, post._id, user?._id]);
+
+  // Double-tap heart animation & timing refs
+  const [showHeartAnimation, setShowHeartAnimation] = useState(false);
+  const [heartAnimKey, setHeartAnimKey] = useState(0);
+  const lastTapRef = useRef(0);
+  const touchStartPos = useRef({ x: 0, y: 0 });
+  const animTimerRef = useRef(null);
+
+  const triggerLikeAnimation = () => {
+    setHeartAnimKey((k) => k + 1);
+    setShowHeartAnimation(true);
+    if (animTimerRef.current) clearTimeout(animTimerRef.current);
+    animTimerRef.current = setTimeout(() => {
+      setShowHeartAnimation(false);
+    }, 850);
+  };
+
+  const handleDoubleTapLike = async (e) => {
+    if (e && e.stopPropagation) {
+      e.stopPropagation();
+    }
+    triggerLikeAnimation();
+
+    if (!isLiked) {
+      const prevCount = likesCount;
+      setIsLiked(true);
+      setLikesCount((prev) => prev + 1);
+
+      try {
+        const res = await api.post(`/posts/${post._id}/like`, { action: 'like' });
+        if (res.data.success) {
+          setIsLiked(res.data.isLiked);
+          setLikesCount(res.data.likesCount);
+        }
+      } catch (err) {
+        setIsLiked(false);
+        setLikesCount(prevCount);
+      }
+    } else {
+      // If already liked: keep liked per Requirement 2
+      try {
+        await api.post(`/posts/${post._id}/like`, { action: 'like' });
+      } catch (err) {}
+    }
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.touches && e.touches[0]) {
+      touchStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    if (e.changedTouches && e.changedTouches[0]) {
+      const dx = Math.abs(e.changedTouches[0].clientX - touchStartPos.current.x);
+      const dy = Math.abs(e.changedTouches[0].clientY - touchStartPos.current.y);
+      if (dx > 12 || dy > 12) return; // Ignore drag/swipe
+    }
+
+    const now = Date.now();
+    const timeDelta = now - lastTapRef.current;
+    if (timeDelta > 50 && timeDelta < 320) {
+      // Double tap detected!
+      lastTapRef.current = 0;
+      handleDoubleTapLike(e);
+    } else {
+      lastTapRef.current = now;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (animTimerRef.current) clearTimeout(animTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (optionsRef.current && !optionsRef.current.contains(e.target)) {
@@ -323,20 +413,38 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
 
       {/* 2. Media Carousel */}
       {mediaList.length > 0 && (
-        <div className="relative w-full aspect-square sm:aspect-[4/3] bg-black overflow-hidden flex items-center justify-center">
+        <div
+          onDoubleClick={handleDoubleTapLike}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          className="relative w-full aspect-square sm:aspect-[4/3] bg-black overflow-hidden flex items-center justify-center cursor-pointer select-none"
+        >
           <img
             src={mediaList[currentMediaIndex]?.url}
             alt="Post media"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover pointer-events-none"
           />
+
+          {/* Centered Heart Burst Animation (Requirement 1, 2) */}
+          {showHeartAnimation && (
+            <div
+              key={heartAnimKey}
+              className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
+            >
+              <Heart className="w-24 h-24 sm:w-28 sm:h-28 text-rose-500 fill-rose-500 animate-heart-burst drop-shadow-[0_10px_25px_rgba(244,63,94,0.6)]" />
+            </div>
+          )}
 
           {/* Carousel Arrows */}
           {mediaList.length > 1 && (
             <>
               {currentMediaIndex > 0 && (
                 <button
-                  onClick={() => setCurrentMediaIndex((prev) => prev - 1)}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCurrentMediaIndex((prev) => prev - 1);
+                  }}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10 cursor-pointer"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -344,15 +452,18 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
 
               {currentMediaIndex < mediaList.length - 1 && (
                 <button
-                  onClick={() => setCurrentMediaIndex((prev) => prev + 1)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCurrentMediaIndex((prev) => prev + 1);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition-colors z-10 cursor-pointer"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
               )}
 
               {/* Dots indicator */}
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center space-x-1 z-10">
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center space-x-1 z-10 pointer-events-none">
                 {mediaList.map((_, i) => (
                   <span
                     key={i}
@@ -415,7 +526,22 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
 
         {/* 4. Content Caption & Hashtags */}
         {post.content && (
-          <div className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
+          <div
+            onDoubleClick={mediaList.length === 0 ? handleDoubleTapLike : undefined}
+            onTouchStart={mediaList.length === 0 ? handleTouchStart : undefined}
+            onTouchEnd={mediaList.length === 0 ? handleTouchEnd : undefined}
+            className={`relative text-xs text-slate-800 dark:text-slate-200 leading-relaxed ${
+              mediaList.length === 0 ? 'cursor-pointer p-2.5 rounded-2xl select-none' : ''
+            }`}
+          >
+            {mediaList.length === 0 && showHeartAnimation && (
+              <div
+                key={heartAnimKey}
+                className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
+              >
+                <Heart className="w-16 h-16 text-rose-500 fill-rose-500 animate-heart-burst drop-shadow-[0_10px_20px_rgba(244,63,94,0.6)]" />
+              </div>
+            )}
             <span className="font-bold mr-1.5 text-slate-900 dark:text-white">
               {post.author?.username}
             </span>

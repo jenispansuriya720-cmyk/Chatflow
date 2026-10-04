@@ -200,6 +200,7 @@ const createReel = async (req, res, next) => {
 const toggleLike = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const { action } = req.body || {}; // 'like' | 'unlike' | undefined
     const reel = await Reel.findById(req.params.id);
 
     if (!reel) {
@@ -210,29 +211,71 @@ const toggleLike = async (req, res, next) => {
       (id) => id.toString() === userId.toString()
     );
 
-    if (hasLiked) {
-      reel.likes = reel.likes.filter((id) => id.toString() !== userId.toString());
-    } else {
-      reel.likes.push(userId);
+    let isLikedNow = hasLiked;
 
-      if (reel.author.toString() !== userId.toString()) {
-        const notif = await Notification.create({
-          user: reel.author,
-          sender: userId,
-          type: 'like',
-          message: `${req.user.fullName} liked your reel`,
-        });
-        if (req.io) {
-          req.io.to(`user:${reel.author}`).emit('new_notification', notif);
+    if (action === 'like') {
+      // Idempotent like: keep liked if already liked (e.g. double-tap)
+      if (!hasLiked) {
+        reel.likes.push(userId);
+        isLikedNow = true;
+
+        if (reel.author.toString() !== userId.toString()) {
+          const notif = await Notification.create({
+            user: reel.author,
+            sender: userId,
+            type: 'like',
+            message: `${req.user.fullName} liked your reel`,
+          });
+          if (req.io) {
+            req.io.to(`user:${reel.author}`).emit('new_notification', notif);
+          }
+        }
+        await reel.save();
+      }
+    } else if (action === 'unlike') {
+      // Idempotent unlike
+      if (hasLiked) {
+        reel.likes = reel.likes.filter((id) => id.toString() !== userId.toString());
+        isLikedNow = false;
+        await reel.save();
+      }
+    } else {
+      // Default toggle behavior
+      if (hasLiked) {
+        reel.likes = reel.likes.filter((id) => id.toString() !== userId.toString());
+        isLikedNow = false;
+      } else {
+        reel.likes.push(userId);
+        isLikedNow = true;
+
+        if (reel.author.toString() !== userId.toString()) {
+          const notif = await Notification.create({
+            user: reel.author,
+            sender: userId,
+            type: 'like',
+            message: `${req.user.fullName} liked your reel`,
+          });
+          if (req.io) {
+            req.io.to(`user:${reel.author}`).emit('new_notification', notif);
+          }
         }
       }
+      await reel.save();
     }
 
-    await reel.save();
+    // Broadcast real-time like update via Socket.IO
+    if (req.io) {
+      req.io.emit('reel:likeUpdated', {
+        reelId: reel._id.toString(),
+        likesCount: reel.likes.length,
+        userId: userId.toString(),
+        isLiked: isLikedNow,
+      });
+    }
 
     res.status(200).json({
       success: true,
-      isLiked: !hasLiked,
+      isLiked: isLikedNow,
       likesCount: reel.likes.length,
     });
   } catch (error) {

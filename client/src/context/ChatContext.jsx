@@ -574,10 +574,51 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // Add / toggle reaction
-  const reactToMessage = async (messageId, emoji) => {
+  // Add / toggle reaction with optimistic feedback (Requirements 6, 7, 8, 10, 16, 19)
+  const reactToMessage = async (messageId, emoji, action = 'toggle') => {
+    if (!user?._id) return;
+    const currentUid = user._id.toString();
+
+    // Optimistic UI update for immediate responsiveness
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m._id !== messageId) return m;
+        const currentReactions = m.reactions || [];
+        const existingIdx = currentReactions.findIndex(
+          (r) =>
+            ((r.user?._id || r.user || r.userId)?.toString() === currentUid) &&
+            r.emoji === emoji
+        );
+
+        let nextReactions = [...currentReactions];
+        if (existingIdx > -1) {
+          if (action === 'ensure' || action === 'like') {
+            return m; // Keep existing reaction on double-tap
+          } else {
+            nextReactions.splice(existingIdx, 1); // Remove reaction
+          }
+        } else {
+          // Replace any other reaction from this user (at most 1 reaction per user)
+          nextReactions = nextReactions.filter(
+            (r) => (r.user?._id || r.user || r.userId)?.toString() !== currentUid
+          );
+          nextReactions.push({
+            emoji,
+            user: {
+              _id: user._id,
+              fullName: user.fullName,
+              username: user.username,
+              profilePicture: user.profilePicture,
+            },
+            createdAt: new Date().toISOString(),
+          });
+        }
+        return { ...m, reactions: nextReactions };
+      })
+    );
+
     try {
-      const res = await api.post(`/messages/${messageId}/react`, { emoji });
+      const res = await api.post(`/messages/${messageId}/react`, { emoji, action });
       if (res.data.success) {
         setMessages((prev) =>
           prev.map((m) => (m._id === messageId ? res.data.message : m))
@@ -595,6 +636,12 @@ export const ChatProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Failed to react to message:', err);
+      // Fetch latest message to rollback clean state
+      if (activeConversation?._id) {
+        api.get(`/messages/${activeConversation._id}`).then((res) => {
+          if (res.data.messages) setMessages(res.data.messages);
+        }).catch(() => {});
+      }
     }
   };
 

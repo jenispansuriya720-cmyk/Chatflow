@@ -293,6 +293,7 @@ const createPost = async (req, res, next) => {
 const toggleLike = async (req, res, next) => {
   try {
     const userId = req.user._id;
+    const { action } = req.body || {}; // 'like' | 'unlike' | undefined
     const post = await Post.findById(req.params.id);
 
     if (!post) {
@@ -303,32 +304,75 @@ const toggleLike = async (req, res, next) => {
       (id) => id.toString() === userId.toString()
     );
 
-    if (hasLiked) {
-      post.likes = post.likes.filter(
-        (id) => id.toString() !== userId.toString()
-      );
-    } else {
-      post.likes.push(userId);
+    let isLikedNow = hasLiked;
 
-      // Create notification for post author if not self
-      if (post.author.toString() !== userId.toString()) {
-        const notif = await Notification.create({
-          user: post.author,
-          sender: userId,
-          type: 'like',
-          message: `${req.user.fullName} liked your post.`,
-        });
-        if (req.io) {
-          req.io.to(`user:${post.author}`).emit('new_notification', notif);
+    if (action === 'like') {
+      // Idempotent like: keep liked if already liked (e.g. double-tap)
+      if (!hasLiked) {
+        post.likes.push(userId);
+        isLikedNow = true;
+
+        if (post.author.toString() !== userId.toString()) {
+          const notif = await Notification.create({
+            user: post.author,
+            sender: userId,
+            type: 'like',
+            message: `${req.user.fullName} liked your post.`,
+          });
+          if (req.io) {
+            req.io.to(`user:${post.author}`).emit('new_notification', notif);
+          }
+        }
+        await post.save();
+      }
+    } else if (action === 'unlike') {
+      // Idempotent unlike
+      if (hasLiked) {
+        post.likes = post.likes.filter(
+          (id) => id.toString() !== userId.toString()
+        );
+        isLikedNow = false;
+        await post.save();
+      }
+    } else {
+      // Default toggle behavior
+      if (hasLiked) {
+        post.likes = post.likes.filter(
+          (id) => id.toString() !== userId.toString()
+        );
+        isLikedNow = false;
+      } else {
+        post.likes.push(userId);
+        isLikedNow = true;
+
+        if (post.author.toString() !== userId.toString()) {
+          const notif = await Notification.create({
+            user: post.author,
+            sender: userId,
+            type: 'like',
+            message: `${req.user.fullName} liked your post.`,
+          });
+          if (req.io) {
+            req.io.to(`user:${post.author}`).emit('new_notification', notif);
+          }
         }
       }
+      await post.save();
     }
 
-    await post.save();
+    // Broadcast real-time like update via Socket.IO
+    if (req.io) {
+      req.io.emit('post:likeUpdated', {
+        postId: post._id.toString(),
+        likesCount: post.likes.length,
+        userId: userId.toString(),
+        isLiked: isLikedNow,
+      });
+    }
 
     res.status(200).json({
       success: true,
-      isLiked: !hasLiked,
+      isLiked: isLikedNow,
       likesCount: post.likes.length,
     });
   } catch (error) {
