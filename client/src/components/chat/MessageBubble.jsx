@@ -63,6 +63,7 @@ const MessageBubble = ({
   const [deleteOption, setDeleteOption] = useState('for_everyone');
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
+  const msgWrapperRef = useRef(null);
   const desktopReactionPickerRef = useRef(null);
   const desktopMenuRef = useRef(null);
   const touchStartPos = useRef({ x: 0, y: 0 });
@@ -70,25 +71,87 @@ const MessageBubble = ({
   const longPressTimerRef = useRef(null);
   const audioRef = useRef(null);
 
-  // Close desktop floating popups when scrolling or clicking outside or Esc (Section 22)
+  const [collisionState, setCollisionState] = useState({
+    placeBelow: false,
+    shiftX: 0,
+    rectTop: 300,
+  });
+
+  // Calculate viewport collision and position dynamically (Section 10, 11)
+  const updateCollisionPosition = () => {
+    if (!msgWrapperRef.current) return;
+    const rect = msgWrapperRef.current.getBoundingClientRect();
+
+    // If message scrolled out of visible viewport, close floating picker (Section 11)
+    if (rect.bottom < 40 || rect.top > window.innerHeight - 40) {
+      setReactionBarOpen(false);
+      setMenuOpen(false);
+      setShowMoreEmojis(false);
+      return;
+    }
+
+    // Top & Bottom collision handling:
+    // ChatHeader takes ~70px. Floating reaction bar height is ~44px.
+    // If rect.top < 125px, there is not enough room above -> place below message.
+    // If rect.bottom > window.innerHeight - 90px (near composer), prefer placing above.
+    let placeBelow = rect.top < 125;
+    if (rect.bottom > window.innerHeight - 90) {
+      placeBelow = false;
+    }
+
+    // Horizontal collision:
+    // Dynamically measure actual reaction bar width (fallback ~340px)
+    const pickerWidth = desktopReactionPickerRef.current?.offsetWidth || 340;
+    let shiftX = 0;
+
+    if (isOwn) {
+      // Sent message: right-0 aligns to right edge of bubble.
+      // Left edge will be at rect.right - pickerWidth
+      const expectedRight = rect.right;
+      const expectedLeft = expectedRight - pickerWidth;
+      if (expectedLeft < 16) {
+        shiftX = 16 - expectedLeft; // Shift right to stay inside viewport
+      }
+      if (expectedRight + shiftX > window.innerWidth - 16) {
+        shiftX = (window.innerWidth - 16) - expectedRight; // Clamp right edge
+      }
+    } else {
+      // Received message: left-0 aligns to left edge of bubble.
+      // Right edge will be at rect.left + pickerWidth
+      const expectedLeft = rect.left;
+      const expectedRight = expectedLeft + pickerWidth;
+      if (expectedRight > window.innerWidth - 16) {
+        shiftX = (window.innerWidth - 16) - expectedRight; // Shift left to stay inside viewport
+      }
+      if (expectedLeft + shiftX < 16) {
+        shiftX = 16 - expectedLeft; // Clamp left edge
+      }
+    }
+
+    setCollisionState({ placeBelow, shiftX, rectTop: rect.top });
+  };
+
+  // Close desktop floating popups when scrolling or clicking outside or Esc (Section 11, 22)
   useEffect(() => {
-    if (!menuOpen && !reactionBarOpen) return;
+    if (!menuOpen && !reactionBarOpen && !showMoreEmojis) return;
 
     const handleScrollOrOutsideClick = (e) => {
       if (
         desktopMenuRef.current &&
         !desktopMenuRef.current.contains(e.target) &&
         desktopReactionPickerRef.current &&
-        !desktopReactionPickerRef.current.contains(e.target)
+        !desktopReactionPickerRef.current.contains(e.target) &&
+        msgWrapperRef.current &&
+        !msgWrapperRef.current.contains(e.target)
       ) {
         setMenuOpen(false);
         setReactionBarOpen(false);
+        setShowMoreEmojis(false);
       }
     };
 
-    const handleScroll = () => {
-      setMenuOpen(false);
-      setReactionBarOpen(false);
+    const handleScrollOrResize = () => {
+      updateCollisionPosition();
     };
 
     const handleKeyDown = (e) => {
@@ -100,16 +163,18 @@ const MessageBubble = ({
       }
     };
 
-    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
     document.addEventListener('mousedown', handleScrollOrOutsideClick);
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
       document.removeEventListener('mousedown', handleScrollOrOutsideClick);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, [menuOpen, reactionBarOpen]);
+  }, [menuOpen, reactionBarOpen, showMoreEmojis, isOwn]);
 
   // Format time
   const time = message.createdAt
@@ -173,6 +238,7 @@ const MessageBubble = ({
     if (window.innerWidth < 768) {
       setMobileSheetOpen(true);
     } else {
+      updateCollisionPosition();
       setMenuOpen(true);
       setReactionBarOpen(false);
     }
@@ -280,13 +346,27 @@ const MessageBubble = ({
             </span>
           )}
 
-          {/* Message Bubble Card */}
+          {/* Message Wrapper (Positioning context strictly for this message bubble) */}
           <div
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
-            onTouchMove={handleTouchMove}
-            onContextMenu={handleContextMenu}
-            className={`relative px-4 py-2.5 shadow-xs text-sm break-words transition-all duration-200 cursor-pointer md:cursor-default ${getBubbleCorners()} ${
+            ref={msgWrapperRef}
+            onMouseEnter={updateCollisionPosition}
+            className="relative inline-flex flex-col max-w-full w-fit group/msg"
+            style={{ width: 'fit-content' }}
+          >
+            {/* Message Bubble Card */}
+            <div
+              onClick={(e) => {
+                if (e.target.closest('button, a, video, audio, input, textarea, img')) return;
+                if (window.innerWidth >= 768 && !message.isDeleted && !isEditing) {
+                  updateCollisionPosition();
+                  setReactionBarOpen((prev) => !prev);
+                }
+              }}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+              onTouchMove={handleTouchMove}
+              onContextMenu={handleContextMenu}
+              className={`relative px-4 py-2.5 shadow-xs text-sm break-words transition-all duration-200 cursor-pointer md:cursor-default ${getBubbleCorners()} ${
               message.isDeleted
                 ? 'italic text-slate-400 bg-slate-100 dark:bg-dark-hover border border-dashed border-slate-300 dark:border-dark-border'
                 : isOwn
@@ -681,328 +761,358 @@ const MessageBubble = ({
             </div>
           </div>
 
-          {/* Reactions Pill Display (Section 10) */}
-          {Object.keys(groupedReactions).length > 0 && !message.isDeleted && (
-            <div
-              className={`flex flex-wrap gap-1 mt-1 px-1 ${
-                isOwn ? 'justify-end' : 'justify-start'
-              }`}
-              role="group"
-              aria-label="Message reactions"
-            >
-              {Object.entries(groupedReactions).map(([emoji, count]) => {
-                const active = hasReacted(emoji);
-                return (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      reactToMessage(message._id, emoji);
-                    }}
-                    aria-label={
-                      active ? `Remove ${emoji} reaction` : `React with ${emoji}`
-                    }
-                    className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-medium border shadow-xs transition-all cursor-pointer ${
-                      active
-                        ? 'bg-brand-500/15 border-brand-500/40 text-brand-600 dark:text-brand-400 scale-105'
-                        : 'bg-white dark:bg-dark-card border-slate-200 dark:border-dark-border text-slate-700 dark:text-slate-300 hover:scale-105'
-                    }`}
-                    style={
-                      active
-                        ? {
-                            borderColor: 'var(--chat-accent, #4f46e5)',
-                            backgroundColor: 'rgba(99, 102, 241, 0.12)',
-                          }
-                        : {}
-                    }
-                    title={
-                      active
-                        ? 'Tap to remove reaction'
-                        : `${count} reaction${count > 1 ? 's' : ''}`
-                    }
-                  >
-                    <span>{emoji}</span>
-                    <span className="text-[11px] font-bold">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Desktop Floating Reaction Bar & Action Menu (Sections 1, 2, 3) */}
+          {/* Desktop Floating Reaction Bar & Action Menu (Sections 1-10) */}
           {!message.isDeleted && (
             <div
               ref={desktopReactionPickerRef}
-              className={`absolute -top-10 z-30 hidden md:flex items-center gap-1 p-1 bg-white/95 dark:bg-dark-card/95 backdrop-blur-md border border-slate-200 dark:border-dark-border rounded-full shadow-lg transition-all duration-150 ${
-                isOwn ? 'left-0' : 'right-0'
+              className={`absolute z-30 hidden md:flex items-center transition-all duration-150 ${
+                collisionState.placeBelow ? 'top-full mt-2' : 'bottom-full mb-2'
+              } ${
+                isOwn ? 'right-0' : 'left-0'
               } ${
                 reactionBarOpen || menuOpen
                   ? 'opacity-100 pointer-events-auto scale-100'
-                  : 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-hover:scale-100 scale-95'
+                  : 'opacity-0 pointer-events-none group-hover/msg:opacity-100 group-hover/msg:pointer-events-auto group-hover/msg:scale-100 scale-95'
               }`}
+              style={{
+                width: 'max-content',
+                minWidth: 'max-content',
+                maxWidth: 'calc(100vw - 24px)',
+                transform: collisionState.shiftX
+                  ? `translateX(${collisionState.shiftX}px)`
+                  : undefined,
+              }}
             >
-              {/* Quick reaction emojis */}
+              {/* Floating pill container */}
               <div
-                className="flex items-center gap-0.5"
-                role="toolbar"
-                aria-label="Quick reactions"
+                className="flex items-center gap-1 px-2 py-1.5 bg-white/95 dark:bg-dark-card/95 backdrop-blur-md border border-slate-200 dark:border-dark-border rounded-full shadow-lg"
+                style={{
+                  width: 'max-content',
+                  minWidth: 'max-content',
+                }}
               >
-                {QUICK_REACTIONS.map((emoji) => {
-                  const active = hasReacted(emoji);
-                  return (
+                {/* Quick Reactions: 👍 ❤️ 😂 😮 😢 🙏 */}
+                <div
+                  className="flex items-center gap-1"
+                  role="toolbar"
+                  aria-label="Quick reactions"
+                >
+                  {QUICK_REACTIONS.map((emoji) => {
+                    const active = hasReacted(emoji);
+                    return (
+                      <button
+                        key={emoji}
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          reactToMessage(message._id, emoji);
+                          setReactionBarOpen(false);
+                          setShowMoreEmojis(false);
+                        }}
+                        aria-label={
+                          active ? `Remove ${emoji} reaction` : `React with ${emoji}`
+                        }
+                        className={`w-9 h-9 flex items-center justify-center text-lg rounded-full transition-all duration-150 hover:scale-125 cursor-pointer flex-shrink-0 ${
+                          active
+                            ? 'bg-brand-500/20 ring-1 ring-brand-500 scale-110'
+                            : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
+                        }`}
+                        style={{ width: '36px', height: '36px' }}
+                        title={active ? `Remove ${emoji}` : `React ${emoji}`}
+                      >
+                        {emoji}
+                      </button>
+                    );
+                  })}
+
+                  {/* ＋ Button for full emoji picker */}
+                  <div className="relative flex-shrink-0">
                     <button
-                      key={emoji}
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        reactToMessage(message._id, emoji);
-                        setReactionBarOpen(false);
-                        setShowMoreEmojis(false);
+                        setShowMoreEmojis((prev) => !prev);
                       }}
-                      aria-label={
-                        active ? `Remove ${emoji} reaction` : `React with ${emoji}`
-                      }
-                      className={`w-7 h-7 flex items-center justify-center text-sm rounded-full transition-all duration-150 hover:scale-125 cursor-pointer ${
-                        active
-                          ? 'bg-brand-500/20 ring-1 ring-brand-500 scale-110'
-                          : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
+                      aria-label="More reactions"
+                      className={`w-9 h-9 flex items-center justify-center text-xs font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors cursor-pointer flex-shrink-0 ${
+                        showMoreEmojis
+                          ? 'bg-slate-200 dark:bg-dark-hover text-brand-600'
+                          : ''
                       }`}
-                      title={active ? `Remove ${emoji}` : `React ${emoji}`}
+                      style={{ width: '36px', height: '36px' }}
+                      title="More reactions"
                     >
-                      {emoji}
+                      <Plus className="w-4 h-4" />
                     </button>
-                  );
-                })}
 
-                {/* ＋ More Reactions button */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowMoreEmojis((prev) => !prev);
-                    }}
-                    aria-label="More reactions"
-                    className={`w-7 h-7 flex items-center justify-center text-xs font-bold rounded-full text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors cursor-pointer ${
-                      showMoreEmojis
-                        ? 'bg-slate-200 dark:bg-dark-hover text-brand-600'
-                        : ''
-                    }`}
-                    title="More reactions"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-
-                  {/* More Emojis Popover */}
-                  {showMoreEmojis && (
-                    <div
-                      className={`absolute bottom-full mb-2 ${
-                        isOwn ? 'left-0' : 'right-0'
-                      } w-64 p-2 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl grid grid-cols-6 gap-1 z-40 animate-slide-up`}
-                      role="dialog"
-                      aria-label="Expanded emoji reactions"
-                    >
-                      {MORE_REACTIONS.map((emoji) => {
-                        const active = hasReacted(emoji);
-                        return (
-                          <button
-                            key={emoji}
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              reactToMessage(message._id, emoji);
-                              setShowMoreEmojis(false);
-                              setReactionBarOpen(false);
-                            }}
-                            aria-label={
-                              active
-                                ? `Remove ${emoji} reaction`
-                                : `React with ${emoji}`
-                            }
-                            className={`w-9 h-9 flex items-center justify-center text-lg rounded-xl transition-transform hover:scale-125 cursor-pointer ${
-                              active
-                                ? 'bg-brand-500/20 ring-1 ring-brand-500'
-                                : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
-                            }`}
-                          >
-                            {emoji}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                    {/* Full Emoji Picker Popover */}
+                    {showMoreEmojis && (
+                      <div
+                        className={`absolute ${
+                          collisionState.placeBelow || (collisionState.rectTop && collisionState.rectTop < 280)
+                            ? 'top-full mt-2'
+                            : 'bottom-full mb-2'
+                        } ${
+                          isOwn ? 'right-0' : 'left-0'
+                        } w-64 p-2 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl grid grid-cols-6 gap-1 z-40 max-h-56 overflow-y-auto animate-slide-up`}
+                        style={{
+                          width: '260px',
+                          maxWidth: 'calc(100vw - 32px)',
+                        }}
+                        role="dialog"
+                        aria-label="Full emoji reactions picker"
+                      >
+                        {MORE_REACTIONS.map((emoji) => {
+                          const active = hasReacted(emoji);
+                          return (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                reactToMessage(message._id, emoji);
+                                setShowMoreEmojis(false);
+                                setReactionBarOpen(false);
+                              }}
+                              aria-label={
+                                active
+                                  ? `Remove ${emoji} reaction`
+                                  : `React with ${emoji}`
+                              }
+                              className={`w-9 h-9 flex items-center justify-center text-lg rounded-xl transition-transform hover:scale-125 cursor-pointer flex-shrink-0 ${
+                                active
+                                  ? 'bg-brand-500/20 ring-1 ring-brand-500'
+                                  : 'hover:bg-slate-100 dark:hover:bg-dark-hover'
+                              }`}
+                              style={{ width: '36px', height: '36px' }}
+                            >
+                              {emoji}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
 
-              {/* Thin divider */}
-              <div className="h-4 w-px bg-slate-200 dark:bg-dark-border mx-0.5" />
+                {/* Thin divider */}
+                <div className="h-4 w-px bg-slate-200 dark:bg-dark-border mx-1 flex-shrink-0" />
 
-              {/* Reply Button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleReply();
-                }}
-                aria-label="Reply"
-                className="w-7 h-7 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-dark-hover rounded-full transition-colors cursor-pointer"
-                title="Reply"
-              >
-                <Reply className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Desktop More Menu Trigger */}
-              <div className="relative" ref={desktopMenuRef}>
+                {/* Reply Button */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setMenuOpen((prev) => !prev);
+                    handleReply();
                   }}
-                  aria-label="More actions"
-                  className={`w-7 h-7 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-hover rounded-full transition-colors cursor-pointer ${
-                    menuOpen
-                      ? 'bg-slate-200 dark:bg-dark-hover text-brand-600'
-                      : ''
-                  }`}
-                  title="More actions"
+                  aria-label="Reply"
+                  className="w-9 h-9 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100 dark:hover:bg-dark-hover rounded-full transition-colors cursor-pointer flex-shrink-0"
+                  style={{ width: '36px', height: '36px' }}
+                  title="Reply"
                 >
-                  <MoreHorizontal className="w-3.5 h-3.5" />
+                  <Reply className="w-4 h-4" />
                 </button>
 
-                {/* Desktop Message Actions Dropdown */}
-                {menuOpen && (
-                  <div
-                    className={`absolute bottom-full mb-2 ${
-                      isOwn ? 'left-0' : 'right-0'
-                    } w-44 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl py-1 z-40 text-xs font-medium animate-slide-up text-slate-700 dark:text-slate-200`}
-                    role="menu"
+                {/* Desktop More Menu Trigger */}
+                <div className="relative flex-shrink-0" ref={desktopMenuRef}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpen((prev) => !prev);
+                    }}
+                    aria-label="More actions"
+                    className={`w-9 h-9 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-dark-hover rounded-full transition-colors cursor-pointer flex-shrink-0 ${
+                      menuOpen
+                        ? 'bg-slate-200 dark:bg-dark-hover text-brand-600'
+                        : ''
+                    }`}
+                    style={{ width: '36px', height: '36px' }}
+                    title="More actions"
                   >
-                    {/* React action */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMenuOpen(false);
-                        setReactionBarOpen(true);
-                        setShowMoreEmojis(true);
-                      }}
-                      aria-label="React"
-                      className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
-                      role="menuitem"
-                    >
-                      <Smile className="w-3.5 h-3.5 text-slate-400" />
-                      <span>React</span>
-                    </button>
+                    <MoreHorizontal className="w-4 h-4" />
+                  </button>
 
-                    {/* Reply action */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReply();
-                      }}
-                      aria-label="Reply"
-                      className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
-                      role="menuitem"
+                  {/* Desktop Message Actions Dropdown */}
+                  {menuOpen && (
+                    <div
+                      className={`absolute ${
+                        collisionState.placeBelow ? 'top-full mt-2' : 'bottom-full mb-2'
+                      } ${
+                        isOwn ? 'right-0' : 'left-0'
+                      } w-44 bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-2xl shadow-xl py-1 z-40 text-xs font-medium animate-slide-up text-slate-700 dark:text-slate-200`}
+                      style={{ width: '176px' }}
+                      role="menu"
                     >
-                      <Reply className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Reply</span>
-                    </button>
-
-                    {/* Copy action (only if message text) */}
-                    {message.text && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleCopy();
+                          setMenuOpen(false);
+                          setReactionBarOpen(true);
+                          setShowMoreEmojis(true);
                         }}
-                        aria-label="Copy text"
+                        aria-label="React"
                         className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
                         role="menuitem"
                       >
-                        <Copy className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Copy</span>
+                        <Smile className="w-4 h-4 text-slate-400" />
+                        <span>React</span>
                       </button>
-                    )}
 
-                    {/* Forward action */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMenuOpen(false);
-                        if (onForward) onForward(message);
-                      }}
-                      aria-label="Forward message"
-                      className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
-                      role="menuitem"
-                    >
-                      <Forward className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Forward</span>
-                    </button>
-
-                    {/* Edit (own message only) */}
-                    {isOwn && message.text && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setMenuOpen(false);
-                          setIsEditing(true);
+                          handleReply();
                         }}
-                        aria-label="Edit message"
+                        aria-label="Reply"
                         className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
                         role="menuitem"
                       >
-                        <Edit2 className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Edit</span>
+                        <Reply className="w-4 h-4 text-slate-400" />
+                        <span>Reply</span>
                       </button>
-                    )}
 
-                    {/* Delete (own message) or Report (other user) */}
-                    <div className="border-t border-slate-100 dark:border-dark-border my-1" />
+                      {message.text && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopy();
+                          }}
+                          aria-label="Copy text"
+                          className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <Copy className="w-4 h-4 text-slate-400" />
+                          <span>Copy</span>
+                        </button>
+                      )}
 
-                    {isOwn ? (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setMenuOpen(false);
-                          setDeleteModalOpen(true);
+                          if (onForward) onForward(message);
                         }}
-                        aria-label="Delete message"
-                        className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors cursor-pointer"
+                        aria-label="Forward message"
+                        className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
                         role="menuitem"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Delete</span>
+                        <Forward className="w-4 h-4 text-slate-400" />
+                        <span>Forward</span>
                       </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpen(false);
-                          setReportModalOpen(true);
-                        }}
-                        aria-label="Report message"
-                        className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors cursor-pointer"
-                        role="menuitem"
-                      >
-                        <ShieldAlert className="w-3.5 h-3.5" />
-                        <span>Report</span>
-                      </button>
-                    )}
-                  </div>
-                )}
+
+                      {isOwn && message.text && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpen(false);
+                            setIsEditing(true);
+                          }}
+                          aria-label="Edit message"
+                          className="w-full flex items-center space-x-2 px-3.5 py-2 hover:bg-slate-50 dark:hover:bg-dark-hover text-left transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <Edit2 className="w-4 h-4 text-slate-400" />
+                          <span>Edit</span>
+                        </button>
+                      )}
+
+                      <div className="border-t border-slate-100 dark:border-dark-border my-1" />
+
+                      {isOwn ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpen(false);
+                            setDeleteModalOpen(true);
+                          }}
+                          aria-label="Delete message"
+                          className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          <span>Delete</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpen(false);
+                            setReportModalOpen(true);
+                          }}
+                          aria-label="Report message"
+                          className="w-full flex items-center space-x-2 px-3.5 py-2 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-left transition-colors cursor-pointer"
+                          role="menuitem"
+                        >
+                          <ShieldAlert className="w-4 h-4" />
+                          <span>Report</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
         </div>
+
+        {/* Reactions Pill Display (Section 10) */}
+        {Object.keys(groupedReactions).length > 0 && !message.isDeleted && (
+          <div
+            className={`flex flex-wrap gap-1 mt-1 px-1 ${
+              isOwn ? 'justify-end' : 'justify-start'
+            }`}
+            role="group"
+            aria-label="Message reactions"
+          >
+            {Object.entries(groupedReactions).map(([emoji, count]) => {
+              const active = hasReacted(emoji);
+              return (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    reactToMessage(message._id, emoji);
+                  }}
+                  aria-label={
+                    active ? `Remove ${emoji} reaction` : `React with ${emoji}`
+                  }
+                  className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-xs font-medium border shadow-xs transition-all cursor-pointer ${
+                    active
+                      ? 'bg-brand-500/15 border-brand-500/40 text-brand-600 dark:text-brand-400 scale-105'
+                      : 'bg-white dark:bg-dark-card border-slate-200 dark:border-dark-border text-slate-700 dark:text-slate-300 hover:scale-105'
+                  }`}
+                  style={
+                    active
+                      ? {
+                          borderColor: 'var(--chat-accent, #4f46e5)',
+                          backgroundColor: 'rgba(99, 102, 241, 0.12)',
+                        }
+                      : {}
+                  }
+                  title={
+                    active
+                      ? 'Tap to remove reaction'
+                      : `${count} reaction${count > 1 ? 's' : ''}`
+                  }
+                >
+                  <span>{emoji}</span>
+                  <span className="text-[11px] font-bold">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
+    </div>
 
       {/* Delete Confirmation Modal */}
       <DeleteConfirmModal
@@ -1025,6 +1135,7 @@ const MessageBubble = ({
           role="dialog"
           aria-modal="true"
           aria-label="Message actions"
+          style={{ height: '100dvh', maxHeight: '-webkit-fill-available' }}
         >
           {/* Backdrop */}
           <div
@@ -1041,7 +1152,7 @@ const MessageBubble = ({
             <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-dark-border mx-auto mb-3" />
 
             {/* Touch-Friendly Reaction Bar with ~44px targets (Section 5) */}
-            <div className="flex items-center justify-between py-2 px-1 bg-slate-100 dark:bg-dark-hover rounded-2xl mb-3 shadow-inner">
+            <div className="flex items-center justify-between gap-1 py-1.5 px-1 bg-slate-100 dark:bg-dark-hover rounded-2xl mb-3 shadow-inner w-full max-w-sm mx-auto">
               {QUICK_REACTIONS.map((emoji) => {
                 const active = hasReacted(emoji);
                 return (
@@ -1056,7 +1167,7 @@ const MessageBubble = ({
                     aria-label={
                       active ? `Remove ${emoji} reaction` : `React with ${emoji}`
                     }
-                    className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-2xl rounded-xl transition-all active:scale-125 touch-manipulation cursor-pointer ${
+                    className={`flex-1 min-w-0 max-w-[44px] h-11 min-h-[44px] flex items-center justify-center text-xl sm:text-2xl rounded-xl transition-all active:scale-125 touch-manipulation cursor-pointer ${
                       active
                         ? 'bg-brand-500/20 ring-2 ring-brand-500 scale-105'
                         : 'hover:bg-slate-200/50 dark:hover:bg-dark-border/50'
@@ -1072,7 +1183,7 @@ const MessageBubble = ({
                 type="button"
                 onClick={() => setShowMoreEmojis((prev) => !prev)}
                 aria-label="More reactions"
-                className={`min-w-[44px] min-h-[44px] flex items-center justify-center text-lg font-bold rounded-xl text-slate-600 dark:text-slate-300 transition-colors touch-manipulation cursor-pointer ${
+                className={`flex-1 min-w-0 max-w-[44px] h-11 min-h-[44px] flex items-center justify-center text-lg font-bold rounded-xl text-slate-600 dark:text-slate-300 transition-colors touch-manipulation cursor-pointer ${
                   showMoreEmojis
                     ? 'bg-brand-500/20 text-brand-600 ring-1 ring-brand-500'
                     : 'hover:bg-slate-200/50 dark:hover:bg-dark-border/50'
