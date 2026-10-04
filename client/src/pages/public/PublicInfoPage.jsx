@@ -48,7 +48,7 @@ const PublicInfoPage = ({ defaultSection }) => {
   ];
 
   return (
-    <div className="min-h-screen w-screen bg-slate-950 text-white flex flex-col selection:bg-brand-500 selection:text-white select-none">
+    <div className="min-h-screen w-full max-w-full bg-slate-950 text-white flex flex-col selection:bg-brand-500 selection:text-white select-none">
       {/* Top Header */}
       <header className="w-full border-b border-white/10 bg-slate-900/60 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-30">
         <div className="flex items-center space-x-4">

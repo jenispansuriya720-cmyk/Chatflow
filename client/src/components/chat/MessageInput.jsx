@@ -481,9 +481,9 @@ const MessageInput = () => {
           )}
 
           {/* Main Input Controls Bar */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 w-full min-w-0">
             {/* Attachment Plus Button & Action Menu (Requirements 1, 2, 8, 9) */}
-            <div className="relative" ref={attachMenuRef}>
+            <div className="relative flex-shrink-0" ref={attachMenuRef}>
               <button
                 type="button"
                 onClick={handlePlusMenu}
@@ -655,7 +655,7 @@ const MessageInput = () => {
             </div>
 
             {/* Textarea */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative min-w-0">
               <textarea
                 ref={textareaRef}
                 value={text}
@@ -684,7 +684,7 @@ const MessageInput = () => {
                 style={{
                   background: 'var(--chat-accent, #4f46e5)',
                 }}
-                className="w-10 h-10 rounded-2xl text-white flex items-center justify-center shadow-md transition-all active:scale-95 cursor-pointer"
+                className="w-10 h-10 rounded-2xl text-white flex items-center justify-center shadow-md transition-all active:scale-95 cursor-pointer flex-shrink-0"
                 title="Send Message"
               >
                 <Send className="w-4 h-4 ml-0.5" />

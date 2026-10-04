@@ -189,10 +189,10 @@ const NotificationsPage = () => {
   };
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
-      <div className="flex-1 overflow-y-auto pt-16 md:pt-8 p-4 md:p-8">
+      <div className="flex-1 overflow-y-auto pt-16 md:pt-8 p-4 md:p-8 min-w-0">
         <div className="max-w-2xl mx-auto space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
           {/* Header */}
           <div className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-dark-border">

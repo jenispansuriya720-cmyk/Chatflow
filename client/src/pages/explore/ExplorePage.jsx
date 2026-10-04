@@ -217,10 +217,10 @@ const ExplorePage = () => {
   }
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
-      <main className="flex-1 flex overflow-hidden">
+      <main className="flex-1 flex overflow-hidden min-w-0">
         {/* Center Discovery Area */}
         <div className="flex-1 overflow-y-auto px-3 sm:px-6 pt-16 md:pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
           <div className="max-w-5xl mx-auto space-y-6">
@@ -524,7 +524,7 @@ const ExplorePage = () => {
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-4">
                   {exploreGridItems.map((gridItem, idx) => (
                     <div
                       key={`${gridItem.type}-${gridItem.id}-${idx}`}

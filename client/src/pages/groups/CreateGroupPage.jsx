@@ -80,10 +80,10 @@ const CreateGroupPage = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
-      <div className="flex-1 overflow-y-auto p-4 md:p-8">
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 min-w-0">
         <div className="max-w-xl mx-auto space-y-6 pb-20 md:pb-8">
           {/* Header */}
           <div className="flex items-center space-x-3 pb-4 border-b border-slate-200 dark:border-dark-border">

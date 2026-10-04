@@ -28,16 +28,19 @@ const CreateModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 select-none animate-fade-in"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 select-none animate-fade-in"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label="Create menu"
     >
       <div
-        className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-3xl w-full max-w-sm p-4 sm:p-5 shadow-2xl space-y-3.5 animate-scale-in mb-16 sm:mb-0"
+        className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-t-3xl sm:rounded-3xl w-full sm:max-w-sm p-4 sm:p-5 pb-[max(1.75rem,env(safe-area-inset-bottom))] sm:pb-5 shadow-2xl space-y-3.5 animate-sheet-up sm:animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Mobile Swipe / Drag Handle Indicator */}
+        <div className="sm:hidden w-10 h-1 bg-slate-300 dark:bg-dark-border rounded-full mx-auto -mt-1 mb-1" />
+
         {/* Header */}
         <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-dark-border">
           <div className="flex items-center space-x-2">

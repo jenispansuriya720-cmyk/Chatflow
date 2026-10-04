@@ -358,10 +358,10 @@ const SocialProfilePage = () => {
   };
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
-      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
+      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8 min-w-0">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-6">
           {/* Cover & Profile Header Card */}
           <div className="bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border rounded-3xl overflow-hidden shadow-xs">

@@ -47,7 +47,7 @@ const ProtectedRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-white dark:bg-dark-base">
+      <div className="h-screen h-dvh w-full max-w-full flex items-center justify-center bg-white dark:bg-dark-base">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -62,7 +62,7 @@ const PublicRoute = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-white dark:bg-dark-base">
+      <div className="h-screen h-dvh w-full max-w-full flex items-center justify-center bg-white dark:bg-dark-base">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -77,7 +77,7 @@ const RootRoute = () => {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-white dark:bg-dark-base">
+      <div className="h-screen h-dvh w-full max-w-full flex items-center justify-center bg-white dark:bg-dark-base">
         <LoadingSpinner size="lg" />
       </div>
     );

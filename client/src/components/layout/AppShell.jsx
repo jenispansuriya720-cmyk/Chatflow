@@ -23,7 +23,7 @@ const AppShell = ({
   const [createModalOpen, setCreateModalOpen] = useState(false);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       {/* Desktop / Tablet Left Sidebar Navigation */}
       <Sidebar
         onOpenCreatePost={onOpenCreatePost}

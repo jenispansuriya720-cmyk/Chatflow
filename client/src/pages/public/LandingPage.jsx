@@ -21,9 +21,9 @@ const LandingPage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen w-screen bg-slate-950 text-white flex flex-col selection:bg-brand-500 selection:text-white relative overflow-x-hidden">
+    <div className="min-h-screen w-full max-w-full bg-slate-950 text-white flex flex-col selection:bg-brand-500 selection:text-white relative overflow-x-hidden">
       {/* Glow Orbs Background */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[500px] bg-gradient-to-b from-brand-600/25 via-indigo-600/15 to-transparent rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] max-w-full h-[500px] bg-gradient-to-b from-brand-600/25 via-indigo-600/15 to-transparent rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-1/3 -left-48 w-96 h-96 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-2/3 -right-48 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
 

@@ -159,8 +159,8 @@ const OnboardingPage = () => {
   };
 
   return (
-    <div className="min-h-screen w-screen flex flex-col items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-slate-100 via-indigo-50/50 to-slate-200 dark:from-dark-base dark:via-dark-surface dark:to-dark-base select-none">
-      <div className="w-full max-w-xl bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
+    <div className="min-h-screen min-h-dvh w-full max-w-full flex flex-col items-center justify-center p-3 sm:p-6 bg-gradient-to-br from-slate-100 via-indigo-50/50 to-slate-200 dark:from-dark-base dark:via-dark-surface dark:to-dark-base select-none">
+      <div className="w-full max-w-xl bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-3xl p-4 sm:p-8 shadow-2xl space-y-6">
         {/* Progress Bar Indicator */}
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs font-bold text-slate-400">

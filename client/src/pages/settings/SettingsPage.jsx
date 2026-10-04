@@ -383,10 +383,10 @@ const SettingsPage = () => {
   };
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full overflow-hidden min-w-0">
         {/* Sticky Global Settings Header */}
         <header className="bg-white dark:bg-dark-surface border-b border-slate-200 dark:border-dark-border px-4 md:px-8 pt-14 md:pt-4 pb-4 flex-shrink-0 z-20">
           <div className="max-w-6xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">

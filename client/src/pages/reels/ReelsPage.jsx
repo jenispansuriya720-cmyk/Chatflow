@@ -72,13 +72,13 @@ const ReelsPage = () => {
   };
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-950 text-white select-none">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-950 text-white select-none">
       <Sidebar onOpenCreateReel={() => setCreateReelOpen(true)} />
 
       <main
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="flex-1 h-full flex flex-col items-center justify-center relative p-2 sm:p-6 pt-14 md:pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6 overflow-hidden"
+        className="flex-1 h-full flex flex-col items-center justify-center relative p-2 sm:p-6 pt-14 md:pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6 overflow-hidden min-w-0"
       >
         {/* Floating Upload Reel Action button */}
         <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-30">

@@ -459,7 +459,7 @@ const MessageBubble = ({
               onTouchEnd={handleTouchEnd}
               onTouchMove={handleTouchMove}
               onContextMenu={handleContextMenu}
-              className={`relative px-4 py-2.5 shadow-xs text-sm break-words transition-all duration-200 cursor-pointer md:cursor-default ${getBubbleCorners()} ${
+              className={`relative px-4 py-2.5 shadow-xs text-sm break-words break-all [overflow-wrap:anywhere] max-w-full transition-all duration-200 cursor-pointer md:cursor-default ${getBubbleCorners()} ${
               message.isDeleted
                 ? 'italic text-slate-400 bg-slate-100 dark:bg-dark-hover border border-dashed border-slate-300 dark:border-dark-border'
                 : isOwn
@@ -1018,7 +1018,7 @@ const MessageBubble = ({
               style={{
                 width: 'max-content',
                 minWidth: 'max-content',
-                maxWidth: 'calc(100vw - 24px)',
+                maxWidth: 'min(calc(100vw - 32px), 340px)',
                 transform: collisionState.shiftX
                   ? `translateX(${collisionState.shiftX}px)`
                   : undefined,

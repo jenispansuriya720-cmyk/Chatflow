@@ -138,7 +138,7 @@ const HomePage = () => {
   };
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       {/* Unified Navigation Sidebar */}
       <Sidebar
         onOpenCreatePost={() => setCreatePostOpen(true)}
@@ -147,7 +147,7 @@ const HomePage = () => {
       />
 
       {/* Main Social Content Area */}
-      <div className="flex-1 flex h-full overflow-hidden">
+      <div className="flex-1 flex h-full overflow-hidden min-w-0">
         {/* Central Feed Scroll Container */}
         <main className="flex-1 h-full overflow-y-auto pt-[calc(3.5rem+env(safe-area-inset-top))] md:pt-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8 px-3 sm:px-6">
           <div className="max-w-xl mx-auto space-y-5">

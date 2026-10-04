@@ -60,8 +60,8 @@ const CommentsModal = ({ post, isOpen, onClose, postId, postAuthor, postCaption 
   if (!isOpen || !effectivePostId) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 select-none animate-fade-in">
-      <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-3xl max-w-md w-full h-[70vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 select-none animate-fade-in">
+      <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-t-3xl sm:rounded-3xl max-w-md w-full h-[85dvh] sm:h-[70vh] flex flex-col shadow-2xl overflow-hidden animate-sheet-up sm:animate-scale-in">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-dark-border">
           <h3 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -115,7 +115,7 @@ const CommentsModal = ({ post, isOpen, onClose, postId, postAuthor, postCaption 
         {/* Comment input footer */}
         <form
           onSubmit={handleAddComment}
-          className="p-3 border-t border-slate-100 dark:border-dark-border flex items-center space-x-2 bg-slate-50 dark:bg-dark-surface"
+          className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-3 border-t border-slate-100 dark:border-dark-border flex items-center space-x-2 bg-slate-50 dark:bg-dark-surface"
         >
           <Avatar
             src={user?.profilePicture}

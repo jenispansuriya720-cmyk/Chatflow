@@ -251,8 +251,8 @@ const CreateReelModal = ({ isOpen, onClose, onReelCreated }) => {
   const effectiveVideoSrc = videoPreviewUrl || videoUrl;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 select-none animate-fade-in overflow-y-auto">
-      <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 my-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-xs p-0 sm:p-4 select-none animate-fade-in overflow-y-auto">
+      <div className="bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-t-3xl sm:rounded-3xl max-w-sm w-full max-h-[92dvh] overflow-y-auto p-4 sm:p-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pb-5 shadow-2xl space-y-4 animate-sheet-up sm:animate-scale-in">
         <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-dark-border">
           <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
             <Film className="w-5 h-5 text-brand-600 dark:text-brand-400" />

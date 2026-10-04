@@ -107,7 +107,7 @@ const ChatDashboard = () => {
   };
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-white dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-white dark:bg-dark-base text-slate-900 dark:text-slate-100">
       {/* Primary Sidebar (Desktop/Tablet left bar, Mobile bottom bar) */}
       <Sidebar
         hideMobileNav={Boolean(activeConversation)}
@@ -115,10 +115,10 @@ const ChatDashboard = () => {
       />
 
       {/* Responsive Chat Interface */}
-      <div className="flex-1 flex h-full overflow-hidden relative">
+      <div className="flex-1 flex h-full overflow-hidden relative min-w-0">
         {/* Left Column: Chat List */}
         <div
-          className={`h-full w-full md:w-80 lg:w-96 flex-shrink-0 transition-all duration-200 ${
+          className={`h-full w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 transition-all duration-200 ${
             activeConversation ? 'hidden md:flex flex-col' : 'flex flex-col'
           }`}
         >

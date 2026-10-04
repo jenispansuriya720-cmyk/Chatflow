@@ -6,7 +6,7 @@ const WelcomePage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen w-screen flex flex-col items-center justify-between p-6 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 text-white relative overflow-hidden select-none">
+    <div className="min-h-screen min-h-dvh w-full max-w-full flex flex-col items-center justify-between p-4 sm:p-6 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 text-white relative overflow-hidden select-none">
       {/* Dynamic Background Glows */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-10 left-10 w-72 h-72 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />

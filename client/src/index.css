@@ -13,9 +13,16 @@
 
 html, body {
   overflow-x: hidden;
-  max-width: 100vw;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+  box-sizing: border-box;
+}
+
+*, ::before, ::after {
+  box-sizing: border-box;
 }
 
 /* Safe-area insets utilities */

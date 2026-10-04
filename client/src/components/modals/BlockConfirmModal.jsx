@@ -27,9 +27,9 @@ const BlockConfirmModal = ({ isOpen, onClose, targetUser, onBlocked }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in select-none">
       <div
-        className="w-full max-w-sm bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-3xl p-6 shadow-2xl space-y-5 text-center"
+        className="w-full max-w-sm bg-white dark:bg-dark-card border border-slate-200 dark:border-dark-border rounded-3xl p-4 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 text-center"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative inline-block mx-auto">

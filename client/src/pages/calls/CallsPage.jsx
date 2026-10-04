@@ -85,10 +85,10 @@ const CallsPage = () => {
   });
 
   return (
-    <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
+    <div className="flex h-screen h-dvh w-full max-w-full overflow-hidden bg-slate-50 dark:bg-dark-base text-slate-900 dark:text-slate-100">
       <Sidebar />
 
-      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6">
+      <main className="flex-1 overflow-y-auto pt-14 md:pt-0 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-6 min-w-0">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6 space-y-6">
           {/* Header Card */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-dark-border">
