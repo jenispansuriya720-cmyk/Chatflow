@@ -111,7 +111,7 @@ const ChatDashboard = () => {
       {/* Primary Sidebar (Desktop/Tablet left bar, Mobile bottom bar) */}
       <Sidebar
         hideMobileNav={Boolean(activeConversation)}
-        hideMobileHeader={Boolean(activeConversation)}
+        hideMobileHeader={true}
       />
 
       {/* Responsive Chat Interface */}
@@ -119,7 +119,7 @@ const ChatDashboard = () => {
         {/* Left Column: Chat List */}
         <div
           className={`h-full w-full lg:w-80 xl:w-96 flex-shrink-0 transition-all duration-200 ${
-            activeConversation ? 'hidden lg:flex flex-col' : 'flex flex-col pt-14 md:pt-0'
+            activeConversation ? 'hidden lg:flex flex-col' : 'flex flex-col'
           }`}
         >
           <ChatList onSelectChat={handleSelectChat} />

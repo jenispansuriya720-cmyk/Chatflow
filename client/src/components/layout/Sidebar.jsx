@@ -76,6 +76,11 @@ const Sidebar = ({
 
   const totalUnread = conversations.reduce((acc, c) => acc + (c.unreadCount || 0), 0);
 
+  const isMessagesRoute =
+    location.pathname.startsWith('/chats') ||
+    location.pathname.startsWith('/chat/') ||
+    location.pathname.startsWith('/messages');
+
   const handleLogout = async () => {
     await logout();
     navigate('/login');
@@ -243,8 +248,8 @@ const Sidebar = ({
         </div>
       </aside>
 
-      {/* Mobile Top Header */}
-      {!hideMobileHeader && <MobileHeader />}
+      {/* Mobile Top Header (Hidden on Messages/Chat routes) */}
+      {!hideMobileHeader && !isMessagesRoute && <MobileHeader />}
 
       {/* Mobile Fixed Bottom Navigation Bar (5 Canonical Items: Home, Messages, Create, Explore, Profile) */}
       {!hideMobileNav && (
