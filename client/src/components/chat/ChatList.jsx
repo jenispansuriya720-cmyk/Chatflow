@@ -87,6 +87,32 @@ const ChatList = ({ onSelectChat }) => {
     <div className="flex flex-col h-full bg-slate-50 dark:bg-dark-surface/70 border-r-0 lg:border-r border-slate-200 dark:border-dark-border select-none min-w-0">
       {/* Top Header Section */}
       <div className="p-3 sm:p-4 pb-2 border-b border-slate-200 dark:border-dark-border flex-shrink-0">
+        {/* Mobile & Tablet Compact Header (< 1024px) */}
+        <div className="flex lg:hidden items-center justify-between mb-2.5 px-0.5">
+          <div className="flex items-center space-x-1.5">
+            <h1 className="text-lg md:text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+              Messages
+            </h1>
+            {totalUnread > 0 && (
+              <span
+                className="w-2 h-2 rounded-full bg-brand-600 dark:bg-brand-400 inline-block animate-pulse"
+                title={`${totalUnread} unread messages`}
+                aria-label={`${totalUnread} unread messages`}
+              />
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/contacts')}
+            className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center text-brand-600 dark:text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 active:scale-95 transition-all touch-manipulation"
+            title="New Message"
+            aria-label="New Message"
+          >
+            <Plus className="w-5 h-5 stroke-[2.5]" />
+          </button>
+        </div>
+
         {/* Desktop Header Row (>= 1024px) */}
         <div className="hidden lg:flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
@@ -187,19 +213,6 @@ const ChatList = ({ onSelectChat }) => {
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 mt-1.5 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
               Your Note
             </span>
-          </div>
-        </div>
-
-        {/* Section 4: Messages Tab (Single visible tab) */}
-        <div className="flex items-center justify-between border-b border-slate-200 dark:border-dark-border px-1 mb-2">
-          <div className="pb-2 text-base font-bold text-slate-900 dark:text-white relative inline-flex items-center space-x-2">
-            <span>Messages</span>
-            {totalUnread > 0 && (
-              <span className="px-2 py-0.5 text-[11px] font-extrabold rounded-full bg-brand-500/15 text-brand-600 dark:text-brand-400">
-                {totalUnread > 99 ? '99+' : totalUnread}
-              </span>
-            )}
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-600 dark:bg-brand-400 rounded-full" />
           </div>
         </div>
 
