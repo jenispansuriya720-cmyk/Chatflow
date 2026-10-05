@@ -1,6 +1,6 @@
 import React from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
-import { Pin, VolumeX, Check, CheckCheck } from 'lucide-react';
+import { Pin, VolumeX, Check, CheckCheck, Camera } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import { useChat } from '../../context/ChatContext';
@@ -97,10 +97,10 @@ const ChatItem = ({ conversation, isActive, onClick }) => {
   return (
     <div
       onClick={onClick}
-      className={`group relative flex items-center space-x-3 px-3.5 py-3 rounded-2xl cursor-pointer transition-all duration-200 select-none ${
+      className={`group relative flex items-center space-x-3 px-3 py-2.5 sm:px-4 sm:py-3 rounded-2xl cursor-pointer transition-all duration-200 select-none ${
         isActive
-          ? 'bg-brand-500/10 dark:bg-brand-500/15 text-slate-900 dark:text-white ring-1 ring-brand-500/20 shadow-sm'
-          : 'hover:bg-slate-100 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-300'
+          ? 'bg-brand-500/10 dark:bg-brand-500/15 text-slate-900 dark:text-white ring-1 ring-brand-500/20 shadow-xs'
+          : 'hover:bg-slate-100/90 dark:hover:bg-dark-hover text-slate-700 dark:text-slate-300'
       }`}
     >
       <Avatar
@@ -128,7 +128,7 @@ const ChatItem = ({ conversation, isActive, onClick }) => {
         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-dark-muted">
           <div className="truncate pr-2">{renderMessagePreview()}</div>
 
-          <div className="flex items-center space-x-1.5 flex-shrink-0">
+          <div className="flex items-center space-x-2 flex-shrink-0">
             {conversation.isMuted && (
               <VolumeX className="w-3.5 h-3.5 text-slate-400 dark:text-dark-muted" />
             )}
@@ -136,10 +136,27 @@ const ChatItem = ({ conversation, isActive, onClick }) => {
               <Pin className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
             )}
             {conversation.unreadCount > 0 && (
-              <span className="min-w-[18px] h-[18px] px-1 bg-brand-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow">
-                {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
-              </span>
+              <div className="flex items-center space-x-1">
+                <span className="w-2.5 h-2.5 rounded-full bg-brand-500 shadow-xs animate-pulse" />
+                {conversation.unreadCount > 1 && (
+                  <span className="min-w-[18px] h-[18px] px-1 bg-brand-600 text-white text-[10px] font-extrabold rounded-full flex items-center justify-center shadow-xs">
+                    {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                  </span>
+                )}
+              </div>
             )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClick();
+              }}
+              className="opacity-0 group-hover:opacity-100 sm:opacity-50 sm:hover:opacity-100 p-1 rounded-full text-slate-400 hover:text-brand-500 hover:bg-slate-200/60 dark:hover:bg-dark-hover transition-opacity"
+              title="Open conversation"
+              aria-label="Camera"
+            >
+              <Camera className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>

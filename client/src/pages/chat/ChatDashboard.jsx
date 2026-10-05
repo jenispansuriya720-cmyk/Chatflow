@@ -118,8 +118,8 @@ const ChatDashboard = () => {
       <div className="flex-1 flex h-full overflow-hidden relative min-w-0">
         {/* Left Column: Chat List */}
         <div
-          className={`h-full w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 transition-all duration-200 ${
-            activeConversation ? 'hidden md:flex flex-col' : 'flex flex-col pt-14 md:pt-0'
+          className={`h-full w-full lg:w-80 xl:w-96 flex-shrink-0 transition-all duration-200 ${
+            activeConversation ? 'hidden lg:flex flex-col' : 'flex flex-col pt-14 md:pt-0'
           }`}
         >
           <ChatList onSelectChat={handleSelectChat} />
@@ -128,7 +128,7 @@ const ChatDashboard = () => {
         {/* Right Column: Active Conversation or Empty Placeholder */}
         <div
           className={`flex-1 h-full flex flex-col transition-all duration-200 relative ${
-            activeConversation ? 'flex' : 'hidden md:flex'
+            activeConversation ? 'flex' : 'hidden lg:flex'
           }`}
         >
           {activeConversation ? (

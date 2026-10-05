@@ -126,7 +126,7 @@ const ChatHeader = ({ onBack, onToggleSearch, onOpenInfo, onOpenTheme }) => {
           <button
             type="button"
             onClick={onBack}
-            className="md:hidden p-2 min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
+            className="lg:hidden p-2 min-w-[44px] min-h-[44px] flex items-center justify-center -ml-2 text-slate-500 hover:text-slate-900 dark:text-dark-muted dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-dark-hover transition-colors"
             title="Back to conversation list"
             aria-label="Back to conversation list"
           >
