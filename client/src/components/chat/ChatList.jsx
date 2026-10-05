@@ -68,8 +68,9 @@ const ChatList = ({ onSelectChat }) => {
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-dark-surface/70 border-r border-slate-200 dark:border-dark-border select-none">
       {/* Header */}
-      <div className="p-4 pb-2 border-b border-slate-200 dark:border-dark-border">
-        <div className="flex items-center justify-between mb-3">
+      <div className="p-3 sm:p-4 pb-2 border-b border-slate-200 dark:border-dark-border">
+        {/* Secondary Header Row - Visible only on desktop/tablet */}
+        <div className="hidden md:flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
             <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
               Chats
@@ -98,7 +99,7 @@ const ChatList = ({ onSelectChat }) => {
         </div>
 
         {/* Search Bar */}
-        <div className="relative mb-3">
+        <div className="relative mb-2.5 md:mb-3">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"

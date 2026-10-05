@@ -119,7 +119,7 @@ const ChatDashboard = () => {
         {/* Left Column: Chat List */}
         <div
           className={`h-full w-full md:w-72 lg:w-80 xl:w-96 flex-shrink-0 transition-all duration-200 ${
-            activeConversation ? 'hidden md:flex flex-col' : 'flex flex-col'
+            activeConversation ? 'hidden md:flex flex-col' : 'flex flex-col pt-14 md:pt-0'
           }`}
         >
           <ChatList onSelectChat={handleSelectChat} />
