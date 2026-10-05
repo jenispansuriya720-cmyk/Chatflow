@@ -912,6 +912,63 @@ const deleteCoverImage = async (req, res, next) => {
   }
 };
 
+// @desc    Update or create user note
+// @route   PUT /api/users/note
+// @access  Private
+const updateNote = async (req, res, next) => {
+  try {
+    const { text } = req.body;
+    if (text && typeof text === 'string' && text.trim().length > 60) {
+      return res.status(400).json({ success: false, message: 'Note cannot exceed 60 characters.' });
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    user.note = {
+      text: text?.trim() || '',
+      createdAt: text?.trim() ? new Date() : null,
+    };
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      note: user.note,
+      message: text?.trim() ? 'Note updated successfully.' : 'Note cleared.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete user note
+// @route   DELETE /api/users/note
+// @access  Private
+const deleteNote = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found.' });
+    }
+
+    user.note = {
+      text: '',
+      createdAt: null,
+    };
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      note: user.note,
+      message: 'Note deleted successfully.',
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getUsers,
   getUserSuggestions,
@@ -933,4 +990,6 @@ module.exports = {
   updateSafetyControls,
   exportUserData,
   getCreatorAnalytics,
+  updateNote,
+  deleteNote,
 };

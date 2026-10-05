@@ -21,6 +21,8 @@ const {
   deleteProfilePicture,
   updateCoverImage,
   deleteCoverImage,
+  updateNote,
+  deleteNote,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/auth');
 
@@ -41,6 +43,8 @@ router.get('/sessions', getActiveSessions);
 router.delete('/sessions', logoutAllSessions);
 router.delete('/account', deleteAccount);
 router.put('/profile', updateProfile);
+router.put('/note', updateNote);
+router.delete('/note', deleteNote);
 router.delete('/profile-picture', deleteProfilePicture);
 router.put('/cover', updateCoverImage);
 router.delete('/cover', deleteCoverImage);

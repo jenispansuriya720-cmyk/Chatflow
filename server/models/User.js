@@ -140,6 +140,17 @@ const userSchema = new mongoose.Schema(
         trim: true,
       },
     ],
+    note: {
+      text: {
+        type: String,
+        default: '',
+        maxlength: [60, 'Note cannot exceed 60 characters'],
+      },
+      createdAt: {
+        type: Date,
+        default: null,
+      },
+    },
     sessions: [
       {
         sessionId: { type: String, required: true },
