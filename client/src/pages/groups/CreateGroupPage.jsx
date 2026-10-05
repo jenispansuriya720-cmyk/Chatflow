@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserPlus, Sparkles, Check, ArrowRight, ArrowLeft } from 'lucide-react';
+import { UserPlus, Sparkles, Check, ArrowRight, ArrowLeft, Camera, Loader2 } from 'lucide-react';
 import Sidebar from '../../components/layout/Sidebar';
 import Avatar from '../../components/common/Avatar';
 import { useAuth } from '../../context/AuthContext';
@@ -20,20 +20,26 @@ const CreateGroupPage = () => {
   const [selectedMembers, setSelectedMembers] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const fileInputRef = React.useRef(null);
 
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        const res = await api.get('/users');
+        const res = await api.get('/users?limit=50');
         if (res.data.success) {
-          setAvailableUsers(res.data.users);
+          const realUsers = (res.data.users || []).filter(
+            (u) => (u._id || u.id)?.toString() !== user?._id?.toString()
+          );
+          setAvailableUsers(realUsers);
         }
       } catch (err) {
         console.error(err);
       }
     };
     loadUsers();
-  }, []);
+  }, [user?._id]);
 
   const handleToggleMember = (userId) => {
     setSelectedMembers((prev) =>
@@ -42,8 +48,39 @@ const CreateGroupPage = () => {
   };
 
   const handleRandomAvatar = () => {
-    const seed = groupName || Date.now();
+    const seed = `${groupName || 'group'}_${Math.random().toString(36).substring(2, 7)}`;
     setGroupImage(`https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(seed)}`);
+  };
+
+  const handleImageFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      addToast('Please select a valid image file', 'error');
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+      const formData = new FormData();
+      formData.append('media', file);
+      formData.append('entityType', 'group');
+
+      const res = await api.post('/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      if (res.data?.success && res.data?.url) {
+        setGroupImage(res.data.url);
+        addToast('Group avatar uploaded!', 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to upload image', 'error');
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleCreateGroup = async (e) => {
@@ -107,22 +144,48 @@ const CreateGroupPage = () => {
             {/* Group details card */}
             <div className="bg-white dark:bg-dark-surface border border-slate-200 dark:border-dark-border rounded-3xl p-6 shadow-xs space-y-4">
               <div className="flex items-center space-x-4">
-                <Avatar
-                  src={
-                    groupImage ||
-                    `https://api.dicebear.com/7.x/identicon/svg?seed=${groupName || 'group'}`
-                  }
-                  name={groupName || 'Group'}
-                  size="xl"
-                  className="ring-2 ring-brand-500/30 flex-shrink-0"
-                />
-                <button
-                  type="button"
-                  onClick={handleRandomAvatar}
-                  className="px-3 py-1.5 bg-slate-100 dark:bg-dark-card hover:bg-slate-200 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-colors"
-                >
-                  Generate Icon
-                </button>
+                <div className="relative cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
+                  <Avatar
+                    src={
+                      groupImage ||
+                      `https://api.dicebear.com/7.x/identicon/svg?seed=${groupName || 'group'}`
+                    }
+                    name={groupName || 'Group'}
+                    size="xl"
+                    className="ring-2 ring-brand-500/30 flex-shrink-0"
+                  />
+                  <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-brand-600 hover:bg-brand-700 text-white rounded-full flex items-center justify-center shadow-md ring-2 ring-white dark:ring-dark-surface transition-transform active:scale-90">
+                    {uploadingImage ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Camera className="w-3.5 h-3.5" />
+                    )}
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageFileChange}
+                    className="hidden"
+                  />
+                </div>
+                <div className="flex flex-col space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3 py-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-semibold rounded-xl transition-colors flex items-center space-x-1.5"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Upload Photo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRandomAvatar}
+                    className="px-3 py-1 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 text-xs font-medium transition-colors text-left"
+                  >
+                    Use Random Icon
+                  </button>
+                </div>
               </div>
 
               <div className="space-y-1">

@@ -4,6 +4,7 @@ import {
   Search,
   Plus,
   UserPlus,
+  Users,
   MessageSquareDashed,
   X,
 } from 'lucide-react';
@@ -14,6 +15,7 @@ import { ChatSkeleton } from '../common/LoadingSpinner';
 import PeopleSuggestions from './PeopleSuggestions';
 import Avatar from '../common/Avatar';
 import NoteModal from './NoteModal';
+import CreateGroupModal from './CreateGroupModal';
 
 const ChatList = ({ onSelectChat }) => {
   const { conversations, activeConversation, selectConversation, loadingConversations } = useChat();
@@ -23,6 +25,7 @@ const ChatList = ({ onSelectChat }) => {
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread' | 'groups' | 'direct'
   const [searchTerm, setSearchTerm] = useState('');
   const [noteModalOpen, setNoteModalOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
 
   // Total unread count
   const totalUnread = (conversations || []).reduce(
@@ -102,15 +105,32 @@ const ChatList = ({ onSelectChat }) => {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => navigate('/contacts')}
-            className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center text-brand-600 dark:text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 active:scale-95 transition-all touch-manipulation"
-            title="New Message"
-            aria-label="New Message"
-          >
-            <Plus className="w-5 h-5 stroke-[2.5]" />
-          </button>
+          <div className="flex items-center space-x-1 sm:space-x-1.5">
+            {/* Create Group Button (👥+) */}
+            <button
+              type="button"
+              onClick={() => setCreateGroupOpen(true)}
+              className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 bg-slate-200/60 hover:bg-brand-500/10 dark:bg-dark-card dark:hover:bg-brand-500/20 active:scale-95 transition-all touch-manipulation relative"
+              title="Create Group"
+              aria-label="Create group"
+            >
+              <div className="relative flex items-center justify-center">
+                <Users className="w-5 h-5 stroke-[2.2]" />
+                <Plus className="w-2.5 h-2.5 absolute -top-1 -right-1 stroke-[3.5] text-brand-600 dark:text-brand-400" />
+              </div>
+            </button>
+
+            {/* New Message / Chat (+) Button */}
+            <button
+              type="button"
+              onClick={() => navigate('/contacts')}
+              className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center text-brand-600 dark:text-brand-400 bg-brand-500/10 hover:bg-brand-500/20 active:scale-95 transition-all touch-manipulation"
+              title="New Message"
+              aria-label="New Message"
+            >
+              <Plus className="w-5 h-5 stroke-[2.5]" />
+            </button>
+          </div>
         </div>
 
         {/* Desktop Header Row (>= 1024px) */}
@@ -126,7 +146,7 @@ const ChatList = ({ onSelectChat }) => {
 
           <div className="flex items-center space-x-1">
             <button
-              onClick={() => navigate('/groups/create')}
+              onClick={() => setCreateGroupOpen(true)}
               className="p-2 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-slate-500 dark:text-dark-muted hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-dark-hover transition-colors"
               title="Create New Group"
               aria-label="Create New Group"
@@ -293,6 +313,15 @@ const ChatList = ({ onSelectChat }) => {
         currentNote={user?.note}
         onNoteSaved={() => {}}
         onNoteDeleted={() => {}}
+      />
+
+      {/* Create Group Modal */}
+      <CreateGroupModal
+        isOpen={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        onGroupCreated={(conv) => {
+          if (onSelectChat) onSelectChat(conv);
+        }}
       />
     </div>
   );

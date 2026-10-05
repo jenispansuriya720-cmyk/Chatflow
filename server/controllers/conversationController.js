@@ -205,9 +205,23 @@ const createGroup = async (req, res, next) => {
     populatedGroup.lastMessage = systemMsg._id;
     await populatedGroup.save();
 
+    const finalGroup = await Conversation.findById(group._id)
+      .populate('participants', 'fullName username email profilePicture isOnline lastSeen')
+      .populate('admins', 'fullName username profilePicture')
+      .populate('lastMessage');
+
+    if (req.io) {
+      participantList.forEach((pid) => {
+        req.io.to(`user:${pid}`).emit('conversationCreated', finalGroup);
+        req.io.to(`user:${pid}`).emit('conversation:created', finalGroup);
+      });
+      req.io.to(`conversation:${group._id}`).emit('receiveMessage', systemMsg);
+      req.io.to(`conversation:${group._id}`).emit('message:new', systemMsg);
+    }
+
     res.status(201).json({
       success: true,
-      conversation: populatedGroup,
+      conversation: finalGroup || populatedGroup,
     });
   } catch (error) {
     next(error);

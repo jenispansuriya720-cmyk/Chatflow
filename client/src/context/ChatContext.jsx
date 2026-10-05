@@ -507,6 +507,14 @@ export const ChatProvider = ({ children }) => {
       }
     };
 
+    const handleConversationCreated = (newConv) => {
+      if (!newConv || !newConv._id) return;
+      setConversations((prev) => {
+        if (prev.some((c) => c._id === newConv._id)) return prev;
+        return [newConv, ...prev];
+      });
+    };
+
     socket.on('receiveMessage', handleReceiveMessage);
     socket.on('message:new', handleReceiveMessage);
     socket.on('message:delivered', handleMessageDelivered);
@@ -524,6 +532,8 @@ export const ChatProvider = ({ children }) => {
     socket.on('messageDeleted', handleMessageDeleted);
     socket.on('message:deleted', handleMessageDeleted);
     socket.on('chat:themeUpdated', handleChatThemeUpdated);
+    socket.on('conversationCreated', handleConversationCreated);
+    socket.on('conversation:created', handleConversationCreated);
 
     return () => {
       socket.off('receiveMessage', handleReceiveMessage);
@@ -543,6 +553,8 @@ export const ChatProvider = ({ children }) => {
       socket.off('messageDeleted', handleMessageDeleted);
       socket.off('message:deleted', handleMessageDeleted);
       socket.off('chat:themeUpdated', handleChatThemeUpdated);
+      socket.off('conversationCreated', handleConversationCreated);
+      socket.off('conversation:created', handleConversationCreated);
     };
   }, [socket, user?._id]);
 
