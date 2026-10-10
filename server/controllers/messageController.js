@@ -17,15 +17,19 @@ const getMessages = async (req, res, next) => {
   try {
     const userId = req.user._id;
     const { conversationId } = req.params;
+    const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+    const before = req.query.before;
+    const isPageBased = Boolean(req.query.page && !before);
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
 
-    // Verify user is in conversation
+    // Fast lean verification of conversation access
     const conversation = await Conversation.findOne({
       _id: conversationId,
       participants: { $in: [userId] },
-    });
+    })
+      .select('_id')
+      .lean();
 
     if (!conversation) {
       return res.status(403).json({
@@ -39,11 +43,24 @@ const getMessages = async (req, res, next) => {
       deletedFor: { $ne: userId },
     };
 
-    const total = await Message.countDocuments(query);
-    const messages = await Message.find(query)
-      .sort({ createdAt: 1 })
-      .skip(skip)
-      .limit(limit)
+    if (before) {
+      query.createdAt = { $lt: new Date(before) };
+    }
+
+    let messagesQuery;
+    if (isPageBased) {
+      messagesQuery = Message.find(query)
+        .sort({ createdAt: 1 })
+        .skip(skip)
+        .limit(limit);
+    } else {
+      // Cursor or initial load: retrieve newest messages first
+      messagesQuery = Message.find(query)
+        .sort({ createdAt: -1 })
+        .limit(limit);
+    }
+
+    const messages = await messagesQuery
       .populate('sender', 'fullName username profilePicture')
       .populate({
         path: 'replyTo',
@@ -53,14 +70,22 @@ const getMessages = async (req, res, next) => {
           select: 'fullName username profilePicture',
         },
       })
-      .populate('reactions.user', 'fullName username profilePicture');
+      .populate('reactions.user', 'fullName username profilePicture')
+      .lean();
+
+    // If fetched descending (cursor/initial), reverse to chronological (oldest to newest) order
+    if (!isPageBased) {
+      messages.reverse();
+    }
 
     // Automatically mark unread messages as read upon viewing
     const unreadMessages = await Message.find({
       conversation: conversationId,
       sender: { $ne: userId },
       'readBy.user': { $ne: userId },
-    }).select('_id sender');
+    })
+      .select('_id sender')
+      .lean();
 
     if (unreadMessages.length > 0) {
       const unreadIds = unreadMessages.map((m) => m._id);
@@ -106,7 +131,7 @@ const getMessages = async (req, res, next) => {
     const existingStoryIds = new Set(existingStories.map((s) => s._id.toString()));
 
     const processedMessages = messages.map((msg) => {
-      const m = msg.toObject();
+      const m = typeof msg.toObject === 'function' ? msg.toObject() : { ...msg };
       if (m.sharedContent && m.sharedContent.contentId) {
         const cId = m.sharedContent.contentId.toString();
         const { contentType } = m.sharedContent;
@@ -122,12 +147,14 @@ const getMessages = async (req, res, next) => {
       return m;
     });
 
+    const hasMore = messages.length === limit;
+    const nextCursor = messages.length > 0 ? messages[0].createdAt : null;
+
     res.status(200).json({
       success: true,
       count: processedMessages.length,
-      total,
-      page,
-      pages: Math.ceil(total / limit),
+      hasMore,
+      nextCursor,
       messages: processedMessages,
     });
   } catch (error) {

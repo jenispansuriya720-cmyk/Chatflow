@@ -10,12 +10,18 @@ const connectDB = async () => {
 
   const uri = process.env.MONGO_URI;
   
+  const mongooseOptions = {
+    maxPoolSize: 20,
+    minPoolSize: 2,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+    family: 4,
+  };
+
   if (uri) {
     try {
       console.log(`[Database] Connecting to MongoDB...`);
-      await mongoose.connect(uri, {
-        serverSelectionTimeoutMS: 5000,
-      });
+      await mongoose.connect(uri, mongooseOptions);
       console.log(`[Database] MongoDB connected successfully to ${mongoose.connection.host}`);
       return mongoose.connection;
     } catch (err) {
@@ -37,7 +43,7 @@ const connectDB = async () => {
     const { MongoMemoryServer } = require('mongodb-memory-server');
     mongodInstance = await MongoMemoryServer.create();
     const memoryUri = mongodInstance.getUri();
-    await mongoose.connect(memoryUri);
+    await mongoose.connect(memoryUri, mongooseOptions);
     console.log(`[Database] Embedded MongoDB connected successfully at ${memoryUri}`);
     return mongoose.connection;
   } catch (error) {

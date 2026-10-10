@@ -9,37 +9,51 @@ const getConversations = async (req, res, next) => {
   try {
     const userId = req.user._id;
 
-    const conversations = await Conversation.find({
+    const page = parseInt(req.query.page) || 1;
+    const limit = req.query.limit ? parseInt(req.query.limit) : null;
+    const skip = limit ? (page - 1) * limit : 0;
+
+    let query = Conversation.find({
       participants: { $in: [userId] },
     })
       .populate('participants', 'fullName username email profilePicture isOnline lastSeen')
       .populate({
         path: 'lastMessage',
+        select: 'text type attachments imageUrl voiceData sender status createdAt isDeleted',
         populate: {
           path: 'sender',
           select: 'fullName username profilePicture',
         },
       })
       .populate('admins', 'fullName username profilePicture')
-      .sort({ updatedAt: -1 });
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    if (limit) {
+      query = query.skip(skip).limit(limit);
+    }
+
+    const conversations = await query;
 
     const convIds = conversations.map((c) => c._id);
-    const unreadAgg = await Message.aggregate([
-      {
-        $match: {
-          conversation: { $in: convIds },
-          sender: { $ne: userId },
-          'readBy.user': { $ne: userId },
-          deletedFor: { $ne: userId },
-        },
-      },
-      {
-        $group: {
-          _id: '$conversation',
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+    const unreadAgg = convIds.length > 0
+      ? await Message.aggregate([
+          {
+            $match: {
+              conversation: { $in: convIds },
+              sender: { $ne: userId },
+              'readBy.user': { $ne: userId },
+              deletedFor: { $ne: userId },
+            },
+          },
+          {
+            $group: {
+              _id: '$conversation',
+              count: { $sum: 1 },
+            },
+          },
+        ])
+      : [];
 
     const unreadMap = new Map();
     unreadAgg.forEach((u) => {
@@ -57,7 +71,7 @@ const getConversations = async (req, res, next) => {
       );
 
       return {
-        ...conv.toObject(),
+        ...conv,
         unreadCount,
         isPinned,
         isMuted,

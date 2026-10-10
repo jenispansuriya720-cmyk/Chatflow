@@ -60,12 +60,18 @@ const ExplorePage = () => {
   const [selectedPost, setSelectedPost] = useState(null);
   const [selectedCommentsPost, setSelectedCommentsPost] = useState(null);
 
+  const searchInitializedRef = useRef(false);
+
   useEffect(() => {
     fetchExploreContent();
   }, [activeTag, contentType]);
 
-  // Debounced search query (fast, debounced, case-insensitive per Section 84)
+  // Debounced search query (avoids duplicate initial request on mount)
   useEffect(() => {
+    if (!searchInitializedRef.current) {
+      searchInitializedRef.current = true;
+      return;
+    }
     const handler = setTimeout(() => {
       fetchExploreContent();
     }, 300);

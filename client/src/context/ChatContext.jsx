@@ -14,20 +14,37 @@ export const ChatProvider = ({ children }) => {
   const [messages, setMessages] = useState([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [typingUsers, setTypingUsers] = useState({}); // { [convId]: [usernames] }
   const [replyingTo, setReplyingTo] = useState(null);
   const [searchFilter, setSearchFilter] = useState('');
 
+  const messagesCacheRef = useRef(new Map());
   const activeConvRef = useRef(activeConversation);
   useEffect(() => {
     activeConvRef.current = activeConversation;
   }, [activeConversation]);
 
-  // Fetch all conversations
+  // Synchronize in-memory cache whenever active conversation messages change
+  const setCachedMessages = useCallback((updater) => {
+    setMessages((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (activeConvRef.current?._id) {
+        messagesCacheRef.current.set(activeConvRef.current._id, next);
+      }
+      return next;
+    });
+  }, []);
+
+  // Fetch all conversations (avoid unnecessary loading indicator on background refreshes)
   const fetchConversations = useCallback(async () => {
     if (!user) return;
     try {
-      setLoadingConversations(true);
+      setConversations((current) => {
+        if (current.length === 0) setLoadingConversations(true);
+        return current;
+      });
       const res = await api.get('/conversations');
       if (res.data.success) {
         setConversations(res.data.conversations);
@@ -50,7 +67,7 @@ export const ChatProvider = ({ children }) => {
     }
   }, [user?._id, socket]);
 
-  // Select a conversation and load its messages
+  // Select a conversation and load its messages (instantly renders from memory cache if available)
   const selectConversation = useCallback(
     async (convOrId) => {
       const convId = typeof convOrId === 'object' && convOrId ? convOrId._id : convOrId;
@@ -60,8 +77,16 @@ export const ChatProvider = ({ children }) => {
         return;
       }
 
-      try {
+      // 1. Instant Cache Render: If conversation messages exist in memory, display immediately
+      const cached = messagesCacheRef.current.get(convId);
+      if (cached && cached.length > 0) {
+        setMessages(cached);
+        setLoadingMessages(false);
+      } else {
         setLoadingMessages(true);
+      }
+
+      try {
         // Join socket room
         if (socket) {
           socket.emit('joinConversation', convId);
@@ -78,10 +103,13 @@ export const ChatProvider = ({ children }) => {
         setActiveConversation(conv || null);
         setReplyingTo(null);
 
-        // Fetch messages
-        const res = await api.get(`/messages/${convId}`);
+        // Fetch newest 30 messages asynchronously
+        const res = await api.get(`/messages/${convId}?limit=30`);
         if (res.data.success) {
           setMessages(res.data.messages);
+          messagesCacheRef.current.set(convId, res.data.messages);
+          setHasMoreMessages(Boolean(res.data.hasMore));
+
           // Zero out unread count in conversations state
           setConversations((prev) =>
             prev.map((c) => (c._id === convId ? { ...c, unreadCount: 0 } : c))
@@ -95,6 +123,43 @@ export const ChatProvider = ({ children }) => {
     },
     [conversations, socket]
   );
+
+  // Load older messages via cursor pagination when user scrolls to top
+  const loadOlderMessages = useCallback(async () => {
+    const currentConv = activeConvRef.current;
+    if (!currentConv?._id || loadingOlderMessages || !hasMoreMessages) return;
+
+    const currentCached = messagesCacheRef.current.get(currentConv._id) || [];
+    if (currentCached.length === 0) return;
+
+    const oldestMessage = currentCached[0];
+    if (!oldestMessage?.createdAt) return;
+
+    try {
+      setLoadingOlderMessages(true);
+      const res = await api.get(`/messages/${currentConv._id}`, {
+        params: { before: oldestMessage.createdAt, limit: 30 },
+      });
+
+      if (res.data.success && res.data.messages?.length > 0) {
+        const older = res.data.messages;
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m._id));
+          const uniqueOlder = older.filter((m) => !existingIds.has(m._id));
+          const combined = [...uniqueOlder, ...prev];
+          messagesCacheRef.current.set(currentConv._id, combined);
+          return combined;
+        });
+        setHasMoreMessages(Boolean(res.data.hasMore));
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch (err) {
+      console.error('Failed to load older messages:', err);
+    } finally {
+      setLoadingOlderMessages(false);
+    }
+  }, [loadingOlderMessages, hasMoreMessages]);
 
   // Send a message with instant optimistic update, background media upload, and retry on failure
   const sendMessage = async ({
@@ -752,13 +817,16 @@ export const ChatProvider = ({ children }) => {
     }
   };
 
-  // Start direct chat helper
+  // Start direct chat helper (instant state update without heavy refetch)
   const startDirectChat = async (userId) => {
     try {
       const res = await api.post(`/conversations/direct/${userId}`);
       if (res.data.success) {
         const conv = res.data.conversation;
-        await fetchConversations();
+        setConversations((prev) => {
+          if (prev.some((c) => c._id === conv._id)) return prev;
+          return [conv, ...prev];
+        });
         await selectConversation(conv._id);
         return conv;
       }
@@ -776,6 +844,9 @@ export const ChatProvider = ({ children }) => {
         messages,
         loadingConversations,
         loadingMessages,
+        hasMoreMessages,
+        loadingOlderMessages,
+        loadOlderMessages,
         typingUsers,
         replyingTo,
         setReplyingTo,

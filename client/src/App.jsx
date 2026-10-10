@@ -9,37 +9,38 @@ import CallModal from './components/calling/CallModal';
 import { ToastProvider } from './components/common/Toast';
 import { LoadingSpinner } from './components/common/LoadingSpinner';
 
-import LoginPage from './pages/auth/LoginPage';
-import RegisterPage from './pages/auth/RegisterPage';
+// Lazy-loaded Pages for Route-Based Code Splitting
+const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'));
+const RegisterPage = React.lazy(() => import('./pages/auth/RegisterPage'));
+const HomePage = React.lazy(() => import('./pages/home/HomePage'));
+const ReelsPage = React.lazy(() => import('./pages/reels/ReelsPage'));
+const ExplorePage = React.lazy(() => import('./pages/explore/ExplorePage'));
+const LiveHubPage = React.lazy(() => import('./pages/live/LiveHubPage'));
+const LiveBroadcastPage = React.lazy(() => import('./pages/live/LiveBroadcastPage'));
+const LiveWatchPage = React.lazy(() => import('./pages/live/LiveWatchPage'));
+const SocialProfilePage = React.lazy(() => import('./pages/profile/SocialProfilePage'));
+const WelcomePage = React.lazy(() => import('./pages/auth/WelcomePage'));
+const OnboardingPage = React.lazy(() => import('./pages/auth/OnboardingPage'));
+const LandingPage = React.lazy(() => import('./pages/public/LandingPage'));
+const PublicInfoPage = React.lazy(() => import('./pages/public/PublicInfoPage'));
+const SafetyCenterPage = React.lazy(() => import('./pages/safety/SafetyCenterPage'));
+const CreatorDashboardPage = React.lazy(() => import('./pages/creator/CreatorDashboardPage'));
+const PeoplePage = React.lazy(() => import('./pages/people/PeoplePage'));
+const SavedPage = React.lazy(() => import('./pages/saved/SavedPage'));
+const ChatDashboard = React.lazy(() => import('./pages/chat/ChatDashboard'));
+const ContactsPage = React.lazy(() => import('./pages/contacts/ContactsPage'));
+const CreateGroupPage = React.lazy(() => import('./pages/groups/CreateGroupPage'));
+const NotificationsPage = React.lazy(() => import('./pages/notifications/NotificationsPage'));
+const ProfilePage = React.lazy(() => import('./pages/profile/ProfilePage'));
+const SettingsPage = React.lazy(() => import('./pages/settings/SettingsPage'));
+const CallsPage = React.lazy(() => import('./pages/calls/CallsPage'));
+const NotFoundPage = React.lazy(() => import('./pages/common/NotFoundPage'));
 
-// Pages - Social Features
-import HomePage from './pages/home/HomePage';
-import ReelsPage from './pages/reels/ReelsPage';
-import ExplorePage from './pages/explore/ExplorePage';
-import LiveHubPage from './pages/live/LiveHubPage';
-import LiveBroadcastPage from './pages/live/LiveBroadcastPage';
-import LiveWatchPage from './pages/live/LiveWatchPage';
-import SocialProfilePage from './pages/profile/SocialProfilePage';
-import WelcomePage from './pages/auth/WelcomePage';
-import OnboardingPage from './pages/auth/OnboardingPage';
-
-// Pages - Trust, Public & Creator Experience (Sections 5, 8, 19, 32, 35, 39)
-import LandingPage from './pages/public/LandingPage';
-import PublicInfoPage from './pages/public/PublicInfoPage';
-import SafetyCenterPage from './pages/safety/SafetyCenterPage';
-import CreatorDashboardPage from './pages/creator/CreatorDashboardPage';
-import PeoplePage from './pages/people/PeoplePage';
-import SavedPage from './pages/saved/SavedPage';
-
-// Pages - Chat & System
-import ChatDashboard from './pages/chat/ChatDashboard';
-import ContactsPage from './pages/contacts/ContactsPage';
-import CreateGroupPage from './pages/groups/CreateGroupPage';
-import NotificationsPage from './pages/notifications/NotificationsPage';
-import ProfilePage from './pages/profile/ProfilePage';
-import SettingsPage from './pages/settings/SettingsPage';
-import CallsPage from './pages/calls/CallsPage';
-import NotFoundPage from './pages/common/NotFoundPage';
+const RouteLoadingFallback = () => (
+  <div className="h-screen h-dvh w-full flex items-center justify-center bg-white dark:bg-dark-base">
+    <LoadingSpinner size="md" />
+  </div>
+);
 
 // Protected Route Wrapper
 const ProtectedRoute = ({ children }) => {
@@ -96,7 +97,8 @@ function App() {
               <CallProvider>
                 <BrowserRouter>
                   <CallModal />
-                  <Routes>
+                  <React.Suspense fallback={<RouteLoadingFallback />}>
+                    <Routes>
                   {/* Public Auth Routes */}
                   <Route
                     path="/login"
@@ -328,7 +330,8 @@ function App() {
                   {/* 404 Catch-All */}
                   <Route path="*" element={<NotFoundPage />} />
                 </Routes>
-              </BrowserRouter>
+                  </React.Suspense>
+                </BrowserRouter>
             </CallProvider>
           </ChatProvider>
         </SocketProvider>

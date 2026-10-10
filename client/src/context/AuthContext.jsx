@@ -9,30 +9,40 @@ export const AuthProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : null;
   });
   const [token, setToken] = useState(() => localStorage.getItem('chatflow_token') || null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    const saved = localStorage.getItem('chatflow_user');
+    const savedToken = localStorage.getItem('chatflow_token');
+    return !Boolean(saved && savedToken);
+  });
 
-  // Validate token and fetch fresh user profile on startup
+  // Validate token and refresh user profile in background on startup (stale-while-revalidate)
   useEffect(() => {
+    let isMounted = true;
     const checkAuth = async () => {
       if (!token) {
-        setLoading(false);
+        if (isMounted) setLoading(false);
         return;
       }
       try {
         const res = await api.get('/auth/me');
-        if (res.data.success) {
+        if (isMounted && res.data.success) {
           setUser(res.data.user);
           localStorage.setItem('chatflow_user', JSON.stringify(res.data.user));
         }
       } catch (err) {
-        console.warn('Auth token validation failed, signing out...');
-        logout();
+        if (isMounted) {
+          console.warn('Auth token validation failed, signing out...');
+          logout();
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     checkAuth();
+    return () => {
+      isMounted = false;
+    };
   }, [token]);
 
   const login = async (loginId, password, rememberMe = true) => {

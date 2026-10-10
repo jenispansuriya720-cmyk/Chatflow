@@ -422,6 +422,8 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
           <img
             src={mediaList[currentMediaIndex]?.url}
             alt="Post media"
+            loading="lazy"
+            decoding="async"
             className="w-full h-full object-cover pointer-events-none"
           />
 
@@ -629,4 +631,17 @@ const PostCard = ({ post, onOpenComments, onOpenShare, onHidePost }) => {
   );
 };
 
-export default PostCard;
+const arePostCardPropsEqual = (prevProps, nextProps) => {
+  const prevP = prevProps.post;
+  const nextP = nextProps.post;
+  if (prevP === nextP) return true;
+  if (prevP?._id !== nextP?._id) return false;
+  if (prevP?.likesCount !== nextP?.likesCount) return false;
+  if (prevP?.commentsCount !== nextP?.commentsCount) return false;
+  if (prevP?.isLiked !== nextP?.isLiked) return false;
+  if (prevP?.isSaved !== nextP?.isSaved) return false;
+  if (prevP?.content !== nextP?.content) return false;
+  return true;
+};
+
+export default React.memo(PostCard, arePostCardPropsEqual);

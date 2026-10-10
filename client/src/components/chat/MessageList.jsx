@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { format, isToday, isYesterday } from 'date-fns';
-import { Search, ChevronUp, ChevronDown, X, MessageSquareDashed } from 'lucide-react';
+import { Search, ChevronUp, ChevronDown, X, MessageSquareDashed, Loader2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useChat } from '../../context/ChatContext';
 import { useChatTheme } from '../../context/ChatThemeContext';
@@ -11,7 +11,14 @@ import ForwardModal from '../modals/ForwardModal';
 
 const MessageList = ({ isSearchOpen, onCloseSearch }) => {
   const { user } = useAuth();
-  const { activeConversation, messages, loadingMessages } = useChat();
+  const {
+    activeConversation,
+    messages,
+    loadingMessages,
+    hasMoreMessages,
+    loadingOlderMessages,
+    loadOlderMessages,
+  } = useChat();
   const { wallpaper, wallpaperOpacity } = useChatTheme();
 
   const [inChatSearch, setInChatSearch] = useState('');
@@ -21,13 +28,34 @@ const MessageList = ({ isSearchOpen, onCloseSearch }) => {
 
   const messagesEndRef = useRef(null);
   const containerRef = useRef(null);
+  const prevScrollHeightRef = useRef(0);
+  const isPrependRef = useRef(false);
 
-  // Auto-scroll to bottom on messages update
+  // Preserve scroll position when older messages are prepended
+  useLayoutEffect(() => {
+    if (isPrependRef.current && containerRef.current) {
+      const scrollDiff = containerRef.current.scrollHeight - prevScrollHeightRef.current;
+      containerRef.current.scrollTop = scrollDiff;
+      isPrependRef.current = false;
+    }
+  }, [messages]);
+
+  // Auto-scroll to bottom on new messages (unless user is searching or viewing older messages)
   useEffect(() => {
-    if (!inChatSearch) {
+    if (!inChatSearch && !isPrependRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, inChatSearch]);
+
+  // Handle upward scroll for cursor pagination
+  const handleScroll = (e) => {
+    const el = e.target;
+    if (el.scrollTop < 60 && hasMoreMessages && !loadingOlderMessages) {
+      prevScrollHeightRef.current = el.scrollHeight;
+      isPrependRef.current = true;
+      loadOlderMessages();
+    }
+  };
 
   // Search match computation
   const matchingIndices = React.useMemo(() => {
@@ -161,8 +189,17 @@ const MessageList = ({ isSearchOpen, onCloseSearch }) => {
       {/* Message scroll list */}
       <div
         ref={containerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-2 md:px-6 py-4 space-y-1 relative z-10"
       >
+        {loadingOlderMessages && (
+          <div className="flex items-center justify-center py-2 select-none">
+            <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-slate-200/80 dark:bg-dark-hover text-xs text-slate-600 dark:text-dark-muted">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-500" />
+              <span>Loading older messages...</span>
+            </div>
+          </div>
+        )}
         {loadingMessages ? (
           <MessageSkeleton />
         ) : messages.length > 0 ? (

@@ -1630,4 +1630,38 @@ const MessageBubble = ({
   );
 };
 
-export default MessageBubble;
+const areMessageBubblePropsEqual = (prevProps, nextProps) => {
+  if (prevProps.highlight !== nextProps.highlight) return false;
+  if (prevProps.isFirstInGroup !== nextProps.isFirstInGroup) return false;
+  if (prevProps.isLastInGroup !== nextProps.isLastInGroup) return false;
+  if (prevProps.isGroup !== nextProps.isGroup) return false;
+
+  const prevM = prevProps.message;
+  const nextM = nextProps.message;
+
+  if (prevM === nextM) return true;
+  if (prevM?._id !== nextM?._id) return false;
+  if (prevM?.status !== nextM?.status) return false;
+  if (prevM?.text !== nextM?.text) return false;
+  if (prevM?.isDeleted !== nextM?.isDeleted) return false;
+  if (prevM?.isEdited !== nextM?.isEdited) return false;
+  if (prevM?.imageUrl !== nextM?.imageUrl) return false;
+
+  const prevReactions = prevM?.reactions || [];
+  const nextReactions = nextM?.reactions || [];
+  if (prevReactions.length !== nextReactions.length) return false;
+  for (let i = 0; i < prevReactions.length; i++) {
+    if (prevReactions[i].emoji !== nextReactions[i].emoji) return false;
+    const prevUid = (prevReactions[i].user?._id || prevReactions[i].user || prevReactions[i].userId)?.toString();
+    const nextUid = (nextReactions[i].user?._id || nextReactions[i].user || nextReactions[i].userId)?.toString();
+    if (prevUid !== nextUid) return false;
+  }
+
+  const prevAtt = prevM?.attachments || [];
+  const nextAtt = nextM?.attachments || [];
+  if (prevAtt.length !== nextAtt.length) return false;
+
+  return true;
+};
+
+export default React.memo(MessageBubble, areMessageBubblePropsEqual);

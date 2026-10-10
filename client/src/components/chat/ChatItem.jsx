@@ -164,4 +164,20 @@ const ChatItem = ({ conversation, isActive, onClick }) => {
   );
 };
 
-export default ChatItem;
+const areChatItemPropsEqual = (prevProps, nextProps) => {
+  if (prevProps.isActive !== nextProps.isActive) return false;
+  const prevC = prevProps.conversation;
+  const nextC = nextProps.conversation;
+  if (prevC === nextC) return true;
+  if (prevC?._id !== nextC?._id) return false;
+  if (prevC?.unreadCount !== nextC?.unreadCount) return false;
+  if (prevC?.isPinned !== nextC?.isPinned) return false;
+  if (prevC?.isMuted !== nextC?.isMuted) return false;
+  if (prevC?.updatedAt !== nextC?.updatedAt) return false;
+  if (prevC?.lastMessage?._id !== nextC?.lastMessage?._id) return false;
+  if (prevC?.lastMessage?.status !== nextC?.lastMessage?.status) return false;
+  if (prevC?.lastMessage?.text !== nextC?.lastMessage?.text) return false;
+  return true;
+};
+
+export default React.memo(ChatItem, areChatItemPropsEqual);

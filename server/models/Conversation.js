@@ -62,7 +62,8 @@ const conversationSchema = new mongoose.Schema(
   }
 );
 
-// Helpful index for looking up conversations by participant
-conversationSchema.index({ participants: 1 });
+// Indexes for fast inbox sorting and participant lookup
+conversationSchema.index({ participants: 1, updatedAt: -1 });
+conversationSchema.index({ participants: 1, type: 1 });
 
 module.exports = mongoose.model('Conversation', conversationSchema);

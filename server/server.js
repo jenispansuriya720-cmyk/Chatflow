@@ -5,6 +5,8 @@ const http = require('http');
 const cors = require('cors');
 const { Server } = require('socket.io');
 
+const compression = require('compression');
+
 const { connectDB } = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
 const { initializeSocket } = require('./socket');
@@ -69,14 +71,22 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static uploads folder (uses /tmp on Vercel serverless environments)
+// Static uploads folder with HTTP caching headers
 const uploadDir = process.env.VERCEL
   ? path.join('/tmp', 'uploads')
   : path.join(__dirname, 'uploads');
-app.use('/uploads', express.static(uploadDir));
+app.use(
+  '/uploads',
+  express.static(uploadDir, {
+    maxAge: '7d',
+    etag: true,
+    lastModified: true,
+  })
+);
 
 // Lazy database connection for serverless/Vercel environments
 app.use(async (req, res, next) => {

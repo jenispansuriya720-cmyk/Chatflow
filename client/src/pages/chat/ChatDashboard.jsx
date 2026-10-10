@@ -89,12 +89,10 @@ const ChatDashboard = () => {
       if (!activeConversation || activeConversation._id !== conversationId) {
         selectConversation(conversationId);
       }
-    } else {
-      if (activeConversation) {
-        selectConversation(null);
-      }
+    } else if (activeConversation) {
+      selectConversation(null);
     }
-  }, [conversationId, selectConversation, activeConversation]);
+  }, [conversationId]);
 
   // Handle selection from chat list
   const handleSelectChat = (conv) => {
